@@ -1,101 +1,154 @@
-# -*- coding: utf-8 -*-
-import typing as t
+from __future__ import annotations
 
-import os
 import json
-from dataclasses import asdict, dataclass, field
-from email.policy import default
+import os
+from dataclasses import dataclass, field, asdict
+from typing import List, Literal, Optional, Any, Dict
 
-from mcp.server.fastmcp import FastMCP  # from official MCP python package
+from mcp.server.fastmcp import FastMCP
 from openai import OpenAI
 
 from .pdf_utils import extract_pdf_pages
 
-# ----------- Data Shapes ------------
-# syllabus_server/server.py (top of file)
-
-from typing import Literal, Optional
-
+# -----------------------------
+# Data classes for parsed syllabus
+# -----------------------------
 
 MeetingKind = Literal["lecture", "recitation", "lab", "exercise", "exam", "other"]
 AssignmentCategory = Literal[
-    "exam", "project", "homework", "quiz", "participation", "presentation", "other"
+    "exam",
+    "project",
+    "homework",
+    "quiz",
+    "participation",
+    "presentation",
+    "other",
 ]
 
 
 @dataclass
 class MeetingPattern:
-    kind: MeetingKind = "lecture"                            # e.g. "lecture"
-    days_of_week: list[str] = field(default_factory=list)    # e.g. ["Mon", "Wed"]
-    start_time_local: str = ""                               # "HH:MM", 24h, local time, "" if unknown
-    end_time_local: str = ""                                 # "HH:MM", "", if unknown
-    location: str = ""                                       # "", if unknown
+    """
+    Recurring meeting pattern like:
+    - "MW 9:30-10:50 am, 3SC 265"
+    """
+    kind: MeetingKind = "lecture"
+    days_of_week: List[str] = field(default_factory=list)  # ["Mon", "Wed"]
+    start_time_local: str = ""  # "HH:MM" 24h
+    end_time_local: str = ""    # "HH:MM" 24h
+    location: str = ""
 
 
 @dataclass
 class ExplicitMeeting:
-    date: str = ""                     # "YYYY-MM-DD"
-    start: str = ""                    # ISO datetime if known, else ""
-    end: str = ""                      # ISO datetime if known, else ""
-    location: str = ""                 # "", if unknown
-    topic: str = ""                    # short label
-    kind: MeetingKind = "lecture"      # best guess
-
-
-@dataclass
-class CourseSection:
-    section_id: str = ""
-    instructors: list[str] = field(default_factory=list)
-    meeting_patterns: list[MeetingPattern] = field(default_factory=list)
-    explicit_meetings: list[ExplicitMeeting] = field(default_factory=list)
-
-
-@dataclass
-class ScheduleEntry:
-    week: t.Optional[int] = None
-    date: str = ""                     # "YYYY-MM-DD"
+    """
+    A specific dated meeting row from a schedule table.
+    """
+    date: str = ""          # "YYYY-MM-DD"
+    start: str = ""         # ISO datetime if known, else ""
+    end: str = ""           # ISO datetime if known, else ""
+    location: str = ""
     topic: str = ""
-    deliverables: list[str] = field(default_factory=list)
-    notes: str = ""
+    kind: MeetingKind = "lecture"
 
 
 @dataclass
 class Assignment:
+    """
+    A graded (or clearly important) deliverable.
+    """
     title: str = ""
-    due: str = ""                           # ISO datetime if concrete, else "" (leave resolution to orchestrator)
-    weight_percent: float = 0.0             # 0.0 if not explicitly stated
-    category: AssignmentCategory = "other"  # classifier based on title/description
-    is_in_class: bool = False               # True if clearly an in-class activity/exam
-    notes: str = ""                         # brief description or source line
+    due: str = ""                   # ISO datetime if concrete; else ""
+    weight_percent: float = 0.0
+    category: AssignmentCategory = "other"
+    is_in_class: bool = False
+    notes: str = ""
 
 
 @dataclass
 class Policies:
-    due_time_default: str = ""     # "start_of_class" | "23:59" | "unspecified" | other short phrase
-    late_policy: str  = ""         # paraphrased or quoted
-    attendance_policy: str = ""    # paraphrased or quoted
-    ai_policy: str = ""            # paraphrased or quoted
-    other: str = ""                # any other relevant course-wide rules
+    """
+    Coarse policies relevant to planning and orchestration.
+    """
+    due_time_default: str = ""      # e.g. "start_of_class", "23:59", "unspecified"
+    late_policy: str = ""
+    attendance_policy: str = ""
+    ai_policy: str = ""
+    other: str = ""
+
+
+@dataclass
+class CourseSection:
+    """
+    One section of a multi-section course, e.g.:
+    - Section A: Tue 9:30–10:50
+    - Section B: Tue 12:30–1:50
+    """
+    section_id: str = ""                          # "A", "B", "C", etc.
+    instructors: List[str] = field(default_factory=list)
+    meeting_patterns: List[MeetingPattern] = field(default_factory=list)
+    explicit_meetings: List[ExplicitMeeting] = field(default_factory=list)
+
+
+@dataclass
+class ScheduleEntry:
+    """
+    One row from a schedule/calendar table.
+    Used to preserve the mapping of dates → topics → deliverables.
+    """
+    week: Optional[int] = None
+    date: str = ""                                  # "YYYY-MM-DD" or ""
+    topic: str = ""
+    deliverables: List[str] = field(default_factory=list)
+    notes: str = ""
 
 
 @dataclass
 class ParsedSyllabus:
-    course_code: str = ""          # e.g. "17-611"
-    course_title: str = ""         # e.g. "Statistics for Decision Making"
-    term: str = ""                 # e.g. "Fall 2025"
-    timezone: str = ""             # IANA, e.g. "America/New_York" or ""
-    sections: list[CourseSection] = field(default_factory=list)
-    assignments: list[Assignment] = field(default_factory=list)
-    schedule: list[ScheduleEntry] = field(default_factory=list)
+    """
+    Top-level parsed representation for one syllabus.
+    Designed to:
+    - support multiple sections,
+    - expose schedule table information,
+    - support downstream LLM orchestration.
+    """
+    course_code: str = ""
+    course_title: str = ""
+    term: str = ""
+    timezone: str = ""
+    sections: List[CourseSection] = field(default_factory=list)
+    assignments: List[Assignment] = field(default_factory=list)
+    schedule: List[ScheduleEntry] = field(default_factory=list)
     policies: Policies = field(default_factory=Policies)
 
 
+# -----------------------------
+# MCP + OpenAI client setup
+# -----------------------------
+
 mcp = FastMCP("SyllabusServer")
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-SYSTEM_PROMPT = """You are a precise, conservative parser for ONE university course syllabus.
+_api_key = os.getenv("OPENAI_API_KEY")
+if not _api_key:
+    raise RuntimeError("OPENAI_API_KEY environment variable is not set.")
+client = OpenAI(api_key=_api_key)
 
-You must output EXACTLY ONE JSON object of the following shape:
+
+# -----------------------------
+# SYSTEM PROMPT
+# -----------------------------
+
+SYSTEM_PROMPT = """
+You are a precise, conservative parser for ONE university course syllabus.
+
+You will receive input as a JSON object:
+
+{
+  "full_text": "<entire syllabus as raw text>",
+  "schedule_text": "<subset of pages that contain the course schedule/calendar; this text may look messy or have columns and sections mushed together>"
+}
+
+Your job is to output EXACTLY ONE JSON object of the following shape:
 
 {
   "course_code": "string",
@@ -155,193 +208,238 @@ You must output EXACTLY ONE JSON object of the following shape:
   }
 }
 
+USE OF INPUT FIELDS:
+
+- Use "full_text" for:
+  - course_code, course_title, term, timezone
+  - global descriptions of assessments and weights
+  - policies (late work, AI use, attendance, etc.)
+
+- Use "schedule_text" for:
+  - reconstructing the "schedule" array
+  - finding which dates/rows mention which deliverables
+  - mapping deliverable names (e.g. "HW1 due") to specific dates when possible
+
+"schedule_text" may be poorly formatted:
+- Multiple section columns may be concatenated.
+- Labels like "Sections A & BSection DSections C & E" may appear.
+- Spacing and alignment may be broken.
+
+Despite this, reconstruct `schedule` rows logically:
+- Identify date-like tokens (e.g. "Aug 27", "9/3", "Oct 15") and convert to "YYYY-MM-DD" when the year is inferable.
+- For each date (or week row), capture:
+    - topic: the main topic/label.
+    - deliverables: list of items clearly due or happening that day
+      (e.g. "HW1 due", "Project 1 checkpoint", "In-class exercise").
+    - notes: any extra context.
+- If you are NOT confident about a mapping, leave that part empty rather than guessing.
+
 DETAILED RULES:
 
 1. DO NOT HALLUCINATE.
-   - Use ONLY information from the syllabus text.
+   - Use ONLY information from full_text and schedule_text.
    - If something is not clearly stated, leave it empty:
-     - "" for strings, 0.0 for weight_percent, null or omit for week, [] for arrays.
+     - "" for strings, 0.0 for weight_percent, null/omitted for week, [] for arrays.
 
 2. course_code, course_title, term:
-   - Extract from the header if present (e.g. "17-603 Communications for Software Leaders I", "Fall 2025").
+   - Extract from header (e.g. "17-603 Communications for Software Leaders I", "Fall 2025").
    - If missing, use "".
 
 3. timezone:
-   - If the syllabus clearly implies a campus location (e.g., Pittsburgh main campus),
-     you MAY set "America/New_York".
+   - If clearly implied (e.g., CMU Pittsburgh), you MAY set "America/New_York".
    - If unsure, use "".
 
 4. sections:
    - Some syllabi list multiple sections (A, B, C, etc.) with different times/rooms.
    - For each distinct section:
-       - section_id: label like "A", "B", "C", "D".
-       - instructors: instructor names if specific; otherwise use the common instructor list.
+       - section_id: label like "A", "B", "C".
+       - instructors: names if specified for that section; otherwise global instructors.
        - meeting_patterns:
            - Parse lines like "Section A, Tuesdays, 9:30-10:50 am, 3SC 265".
-           - days_of_week: ["Tue"] etc.
-           - start_time_local/end_time_local: 24-hour format, e.g. "09:30".
+           - days_of_week: ["Tue"], etc. Use Mon/Tue/Wed/Thu/Fri abbreviations.
+           - start_time_local/end_time_local: 24h, e.g. "09:30".
            - location: room string.
        - explicit_meetings:
-           - If there is a schedule table with specific dates tied to sections, map them if clear;
-             otherwise leave this empty and use top-level "schedule".
+           - Only if a date-specific entry is clearly tied to this section.
+   - If only one meeting pattern applies, you may create one section with section_id "default".
 
-5. meeting_patterns for single-section courses:
-   - If no sections are distinguished, you may use one synthetic section with section_id "default".
+5. schedule:
+   - Capture rows from any course schedule/calendar table.
+   - week:
+       - numeric week if clearly labeled; else null/omit.
+   - date:
+       - "YYYY-MM-DD" if a specific date appears; else "".
+   - topic:
+       - short description of that day/week.
+   - deliverables:
+       - items that are clearly due or occurring that day ("HW1 due", "Team presentation", "In-class final").
+   - notes:
+       - leftover relevant text that doesn’t fit cleanly elsewhere.
+   - If schedule_text is extremely garbled:
+       - Only include rows you can reconstruct confidently.
+       - Never invent dates.
 
-6. schedule:
-   You will receive your input as a JSON object:
-
-    {
-      "full_text": "<entire syllabus as raw text>",
-      "schedule_text": "<subset of pages that contain the course schedule/calendar; this text may look messy or have columns mushed together>"
-    }
-    
-    Use BOTH, but:
-    - Prefer `full_text` for course_code, course_title, term, policies, and assignment descriptions.
-    - Prefer `schedule_text` to reconstruct the `schedule` array and any date-deliverable mappings.
-    
-    `schedule_text` is often poorly formatted:
-    - columns may be concatenated (e.g. "Sections A & BSection DSections C & E...")
-    - multiple sections may appear in the same row,
-    - spacing may be inconsistent.
-    
-    Despite that, reconstruct `schedule` rows logically:
-    - Identify date-like tokens (e.g. "Aug 27", "9/3", "Oct 15").
-    - Look at nearby words for topics and deliverables ("HW1 due", "Team Presentation", "In-class exercise").
-    - Each `schedule` entry should capture ONE logical row:
-        - `week`: if explicitly labeled, otherwise null/omitted.
-        - `date`: concrete "YYYY-MM-DD" if you can infer it.
-        - `topic`: short description of that meeting’s main topic.
-        - `deliverables`: list of items clearly due or happening that day.
-        - `notes`: any extra context.
-    
-    If the layout is too garbled to be certain for a specific item:
-    - You may leave that item out of `schedule`.
-    - NEVER invent dates or deliverables that are not clearly supported.
-
-7. assignments:
+6. assignments:
    - Include clearly graded or major deliverables:
        - exams, finals, midterms
        - projects, reports
-       - homeworks, major quizzes, presentations
-   - title:
-       - short, e.g. "HW1: Logic", "In-Class Final", "Team Presentation".
+       - homeworks, major quizzes
+       - graded presentations
+   - title: concise label.
    - due:
-       - ONLY fill if:
-           - a specific date/time is given, OR
+       - ONLY if:
+           - a specific due DATE and (if applicable) TIME is clearly given, OR
            - a specific date is given AND a clear default due time rule exists
-             (e.g. "all assignments due 11:59pm").
-       - If due depends on "at the beginning of class", leave due = "" and
-         describe in notes; the orchestrator will resolve it.
+             in policies (e.g. "all assignments due 11:59pm").
+       - If due depends on "at the beginning of class" or similar and
+         requires picking a specific meeting, leave due = "" and explain in notes.
    - weight_percent:
-       - Use explicit numbers from grading tables when clearly mapped.
+       - Use explicit percentages from grading tables when clearly mapped.
        - Otherwise 0.0.
    - category:
-       - exam: contains "exam", "midterm", "final".
-       - project: "project", "report", "capstone".
-       - homework: "homework", "HW".
-       - quiz: "quiz".
-       - participation: "participation", "attendance".
-       - presentation: "presentation".
-       - other: everything else.
+       - exam, project, homework, quiz, participation, presentation, other
+         based on keywords.
    - is_in_class:
-       - true if it clearly occurs during class time (e.g. "In-Class Final", "In-class exercise").
+       - true if clearly in-class (e.g. "In-class final", "In-class exercise").
        - false otherwise.
    - notes:
-       - short quote or paraphrase from syllabus describing this item.
+       - brief quote/paraphrase of description.
 
-8. policies:
+7. policies:
    - due_time_default:
-       - A short code/phrase for the clearest rule:
-         - "start_of_class" if "all work due at the beginning of class".
-         - "23:59" if "all work due at 11:59pm".
-         - "unspecified" if no clear rule.
+       - "start_of_class", "23:59", "unspecified", or a short phrase.
    - late_policy:
-       - Brief summary of late work rules.
+       - short summary.
    - attendance_policy:
-       - Brief summary of attendance expectations.
+       - short summary.
    - ai_policy:
-       - Brief summary of AI / generative tools usage policy, if present.
+       - short summary of AI / LLM usage policy if present; else "".
    - other:
-       - Any other global rule relevant to scheduling or workload.
+       - other global constraints.
    - If a policy is not discussed, use "".
 
-9. VALIDITY:
-   - Output MUST be valid JSON.
-   - No comments, no trailing commas, no extra text.
+8. VALIDITY:
+   - Output MUST be valid JSON, nothing else.
+   - No comments, no trailing commas, no prose.
 """
 
-# ----------- MCP Tool ------------
+
+# -----------------------------
+# MCP Tool Implementation
+# -----------------------------
+
 @mcp.tool()
-def parse_syllabus(pdf_path_or_url: str) -> dict:
+def parse_syllabus(pdf_path_or_url: str) -> Dict[str, Any]:
     """
-    Parses a university course syllabus PDF into structured data.
-
-    Args:
-        pdf_path_or_url: Local file path or URL to the syllabus PDF.
-
-    Returns:
-        ParsedSyllabus object with extracted information.
+    Parse a syllabus PDF/URL into ParsedSyllabus.
+    Returns a plain dict (JSON-serializable) suitable for MCP clients.
     """
     pages = extract_pdf_pages(pdf_path_or_url)
+
+    # Join all pages for global parsing
     full_text = "\n\n".join(pages)
-    schedule_pages = [p for p in pages if "Schedule" in p or "Course Schedule" in p or "Calendar" in p]
-    schedule_text = "\n\n".join(schedule_pages)
+
+    # Heuristic: pick likely schedule pages
+    schedule_pages: List[str] = []
+    for p in pages:
+        lp = p.lower()
+        if "schedule" in lp or "course calendar" in lp or "course schedule" in lp:
+            schedule_pages.append(p)
+
+    # Fallback: if no explicit schedule page detected, leave empty string
+    schedule_text = "\n\n".join(schedule_pages) if schedule_pages else ""
 
     model_input = {
-        "full_text": full_text[:16000],  # Truncate to first 16k chars
-        "schedule_text": schedule_text[:6000]  # Truncate to first 4k chars
+        "full_text": full_text[:14000],          # keep within context
+        "schedule_text": schedule_text[:6000],   # focused messy part
     }
 
     completion = client.chat.completions.create(
-        model = "gpt-5",
-        response_format = {
-            "type": "json_object",
-        },
-        messages = [
+        model="gpt-5",
+        response_format={"type": "json_object"},
+        messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": json.dumps(model_input)},
+            {
+                "role": "user",
+                "content": json.dumps(model_input),
+            },
         ],
     )
 
-    raw = completion.choices[0].message.content
+    raw = completion.choices[0].message.content or "{}"
     data = json.loads(raw)
-    sections: list[CourseSection] = []
+
+    # ---- Convert raw JSON → dataclasses defensively ----
+
+    # Sections
+    sections: List[CourseSection] = []
     for sec in data.get("sections", []):
         meeting_patterns = [
-            MeetingPattern(**mp) for mp in sec.get("meeting_patterns", [])
+            MeetingPattern(**mp) for mp in sec.get("meeting_patterns", []) or []
         ]
         explicit_meetings = [
-            ExplicitMeeting(**em) for em in sec.get("explicit_meetings", [])
+            ExplicitMeeting(**em) for em in sec.get("explicit_meetings", []) or []
         ]
-        section = CourseSection(
-            section_id=sec.get("section_id", ""),
-            instructors=sec.get("instructors", []),
-            meeting_patterns=meeting_patterns,
-            explicit_meetings=explicit_meetings
+        sections.append(
+            CourseSection(
+                section_id=sec.get("section_id", ""),
+                instructors=sec.get("instructors", []) or [],
+                meeting_patterns=meeting_patterns,
+                explicit_meetings=explicit_meetings,
+            )
         )
-        sections.append(section)
 
+    # Assignments
+    assignments: List[Assignment] = []
+    for a in data.get("assignments", []) or []:
+        assignments.append(
+            Assignment(
+                title=a.get("title", "") or "",
+                due=a.get("due", "") or "",
+                weight_percent=float(a.get("weight_percent", 0.0) or 0.0),
+                category=a.get("category", "other") or "other",
+                is_in_class=bool(a.get("is_in_class", False)),
+                notes=a.get("notes", "") or "",
+            )
+        )
 
-    parsed = ParsedSyllabus(
-        course_code=data.get("course_code", ""),
-        course_title=data.get("course_title", ""),
-        term=data.get("term", ""),
-        timezone=data.get("timezone", ""),
-        sections=sections,
-        assignments=[
-            Assignment(**a) for a in data.get("assignments", [])
-        ],
-        schedule=[
-            ScheduleEntry(**s) for s in data.get("schedule", [])
-        ],
-        policies=Policies(**data.get("policies", {}))
+    # Schedule entries
+    schedule: List[ScheduleEntry] = []
+    for s in data.get("schedule", []) or []:
+        schedule.append(
+            ScheduleEntry(
+                week=s.get("week", None),
+                date=s.get("date", "") or "",
+                topic=s.get("topic", "") or "",
+                deliverables=s.get("deliverables", []) or [],
+                notes=s.get("notes", "") or "",
+            )
+        )
+
+    # Policies
+    pol_src = data.get("policies", {}) or {}
+    policies = Policies(
+        due_time_default=pol_src.get("due_time_default", "") or "",
+        late_policy=pol_src.get("late_policy", "") or "",
+        attendance_policy=pol_src.get("attendance_policy", "") or "",
+        ai_policy=pol_src.get("ai_policy", "") or "",
+        other=pol_src.get("other", "") or "",
     )
 
+    parsed = ParsedSyllabus(
+        course_code=data.get("course_code", "") or "",
+        course_title=data.get("course_title", "") or "",
+        term=data.get("term", "") or "",
+        timezone=data.get("timezone", "") or "",
+        sections=sections,
+        assignments=assignments,
+        schedule=schedule,
+        policies=policies,
+    )
 
-    return asdict(parsed)  # FastMCP returns structured result
+    return asdict(parsed)
 
 
-# ----------- Main Entry Point ------------
 if __name__ == "__main__":
+    # Run as an MCP server over stdio
     mcp.run()
