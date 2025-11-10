@@ -1,0 +1,25 @@
+[project]
+name = "syllabusmcp"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "click>=8.3.0",
+    "mcp[cli]>=1.21.0",
+    "openai>=2.7.1",
+    "pdfplumber>=0.11.8",
+    "requests>=2.32.5",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["syllabus_server", "productivity_server", "orchestrator"]
