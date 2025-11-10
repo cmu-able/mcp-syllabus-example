@@ -285,25 +285,42 @@ DETAILED RULES:
        - projects, reports
        - homeworks, major quizzes
        - graded presentations
-   - title: concise label.
+   - Also include smaller but explicitly scheduled graded work when it is clearly tied
+     to a date in the schedule (e.g. "HW1 due", "Reading memo 2 due").
+   - title:
+       - concise, e.g. "HW1: Logic", "Team Presentation 1", "Reading Memo 2".
    - due:
-       - ONLY if:
-           - a specific due DATE and (if applicable) TIME is clearly given, OR
-           - a specific date is given AND a clear default due time rule exists
-             in policies (e.g. "all assignments due 11:59pm").
-       - If due depends on "at the beginning of class" or similar and
-         requires picking a specific meeting, leave due = "" and explain in notes.
+       - If a specific due DATE appears in either full_text or schedule_text
+         for that item, convert it to "YYYY-MM-DD".
+       - If there is also a clear default time rule in policies.due_time_default:
+            - "start_of_class": you may leave time empty and explain in notes that
+              it is due at the chosen section's class start time.
+            - "23:59": you MAY set time to 23:59.
+       - If schedule_text has a row like "Sep 10 – Team Presentation 1 [16%]" or
+         "HW1 due", you SHOULD:
+            - create or update an assignments[] entry for that item
+            - set due to that date (with time if policy is clear).
+       - If you cannot confidently map a deliverable to a specific date, set due = "".
    - weight_percent:
-       - Use explicit percentages from grading tables when clearly mapped.
-       - Otherwise 0.0.
+       - Use explicit percentages from grading/assessment tables when clearly mapped.
+       - For items like "7 short assignments @ 5.5% each", it is acceptable to:
+            - either record representatives with correct weight_percent, OR
+            - record a generic aggregated description.
+       - If unclear, use 0.0.
    - category:
-       - exam, project, homework, quiz, participation, presentation, other
-         based on keywords.
+       - exam: contains "exam", "midterm", "final".
+       - project: "project", "report", "capstone".
+       - homework: "homework", "HW".
+       - quiz: "quiz".
+       - participation: "participation", "attendance".
+       - presentation: "presentation".
+       - other: everything else.
    - is_in_class:
        - true if clearly in-class (e.g. "In-class final", "In-class exercise").
        - false otherwise.
    - notes:
-       - brief quote/paraphrase of description.
+       - brief quote/paraphrase of description, including if due time depends on
+         "start of class" or similar.
 
 7. policies:
    - due_time_default:
@@ -322,6 +339,7 @@ DETAILED RULES:
    - Output MUST be valid JSON, nothing else.
    - No comments, no trailing commas, no prose.
 """
+
 
 
 # -----------------------------
@@ -343,7 +361,14 @@ def parse_syllabus(pdf_path_or_url: str) -> Dict[str, Any]:
     schedule_pages: List[str] = []
     for p in pages:
         lp = p.lower()
-        if "schedule" in lp or "course calendar" in lp or "course schedule" in lp:
+        if (
+                "schedule" in lp
+                or "course calendar" in lp
+                or "course schedule" in lp
+                or ("week" in lp and "date" in lp and "topic" in lp)
+                or "deliverable" in lp
+                or "assignment schedule" in lp
+        ):
             schedule_pages.append(p)
 
     # Fallback: if no explicit schedule page detected, leave empty string

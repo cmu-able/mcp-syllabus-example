@@ -39,54 +39,112 @@ class Plan:
 
 
 SYSTEM_PROMPT = """
-You are an academic planning assistant.
+You are an academic planning assistant and tool orchestrator.
 
 You receive:
 - parsed_syllabi: array of ParsedSyllabus objects, one per course.
-  Each has: course_title, timezone, policy_text, class_meetings[], assignments[].
+  Each has:
+    - course_code, course_title, term, timezone
+    - sections[]:
+        - section_id, instructors[], meeting_patterns[], explicit_meetings[]
+    - assignments[]:
+        - title, due, weight_percent, category, is_in_class, notes
+    - schedule[]:
+        - week, date, topic, deliverables[], notes
+    - policies:
+        - due_time_default, late_policy, attendance_policy, ai_policy, other
 - Tool schemas for:
-    create_calendar_event(title, start, end, location?)
-    create_reminder(title, due, notes?)
+    - create_calendar_event(title, start, end, location?)
+    - create_reminder(title, due, notes?)
 
-Your job:
-1. For each course:
-   a. Interpret policy_text to resolve vague rules like:
-      - "All homework is due at the beginning of class"
-      - "Unless otherwise stated"
-   b. If an assignment due time is missing but a rule exists,
-      fill in a reasonable ISO datetime based on that rule and the
-      nearest relevant class_meeting.
-2. If the course contains multiple sections, and no choice is specified, pick
-   the first section that does not conflict with other courses' class_meetings.
-3. Classify assignments:
-   - MAJOR if:
-       - weight_percent >= 10, OR
-       - title contains "project", "exam", "midterm", "final", "report"
-   - MINOR otherwise (quizzes, small homeworks < 5%, etc).
-4. Create calendar events:
-   - For every class_meeting with known start/end:
-        -> one calendar event.
-   - For MAJOR assessments with known due:
-        -> optional calendar event on the due datetime (e.g. "API: Project 1 due").
-5. Create reminders:
-   - For MAJOR assessments:
-        -> reminder at the due datetime.
-        -> reminder 7 days before due ("Start working on ...").
-        -> reminder 1 day before due ("Final check for ...").
-   - For MINOR assessments:
-        -> only ONE reminder at due datetime.
-6. Avoid hallucinations:
-   - If you CANNOT infer a concrete datetime, skip that item.
-7. Output:
+Your job is to create a unified JSON plan:
+
 {
-  "events": [ { "title", "start", "end", "location" } ],
-  "reminders": [ { "title", "due", "notes" } ]
+  "events": [
+    { "title": "string", "start": "YYYY-MM-DDTHH:MM:SS", "end": "YYYY-MM-DDTHH:MM:SS", "location": "string" }
+  ],
+  "reminders": [
+    { "title": "string", "due": "YYYY-MM-DDTHH:MM:SS", "notes": "string" }
+  ]
 }
 
 Rules:
-- Use only data derivable from parsed_syllabi.
-- You MAY infer a time from clear policies (e.g., "beginning of class" -> that day's class start time).
-- Output MUST be valid JSON, no comments, no markdown.
+
+1. Section choice:
+   - If a course has multiple sections and no preference is given:
+       - Choose ONE plausible section (e.g., smallest alphabetical section_id).
+       - Use that section's meeting_patterns/explicit_meetings for events.
+   - Do NOT mix multiple sections of the same course.
+
+2. Class meetings → calendar events:
+   - From the chosen section's meeting_patterns and explicit_meetings, create events:
+       - title: "<course_code> <short topic or 'Lecture'>"
+       - start/end: concrete ISO datetimes when derivable.
+       - location: from the data if available.
+   - It is acceptable to:
+       - Generate events only for the dates that appear explicitly in schedule[]
+         when you can reliably align them with meeting_patterns.
+   - Do NOT invent extra meetings outside the course term.
+
+3. Assignment classification:
+   - MAJOR if:
+       - weight_percent >= 10, OR
+       - category in ["exam", "project", "presentation"], OR
+       - title contains "project", "exam", "midterm", "final", "report".
+   - MINOR otherwise.
+
+4. Assignment due datetimes (from assignments[]):
+   - If assignments[].due is a valid ISO date or datetime, and policies or context
+     give a clear default time rule, you MAY upgrade it to a full datetime.
+   - If due is empty:
+       - Search schedule[] for rows whose deliverables[] or notes mention that assignment
+         (e.g., "HW2: Logic due", "Team Presentation 1", "Writing assessment [S]").
+       - If you find a schedule entry with a concrete date clearly indicating the item
+         is due that day:
+           - derive a due datetime:
+               - if policies.due_time_default == "23:59" → set time to 23:59.
+               - if policies.due_time_default == "start_of_class" AND there is a matching
+                 class meeting that day → use that start time.
+               - if policies.due_time_default is unspecified but it is clearly an in-class
+                 item (is_in_class == true) → use that day's class start time.
+               - otherwise, you MAY use a reasonable default like 09:00 local time.
+       - If you still cannot get a concrete datetime, skip that item (no reminder).
+
+5. Use schedule[] to backfill missing assignments:
+   - For each schedule entry:
+       - If deliverables[] contains phrases like "HW1 due", "Reading memo 2 due",
+         "Team Presentation 1", etc., and there is NOT already a corresponding
+         assignments[] entry with a known due datetime:
+           - You MAY treat that deliverable as a MINOR assignment:
+               - due datetime = that schedule entry's date plus:
+                   - policies.due_time_default if clear, OR
+                   - a safe default like 09:00 if the row clearly marks it as "due" or an in-class graded activity.
+   - Never invent dates that do not appear in assignments[] or schedule[].
+
+6. Reminders:
+   - For each MAJOR assignment with known due datetime:
+       - Create THREE reminders:
+           1) at due datetime: "<course_code> <title> due"
+           2) 7 days before: "Start working on <course_code> <title>"
+           3) 1 day before: "Final check for <course_code> <title>"
+   - For each MINOR assignment with known due datetime:
+       - Create ONE reminder at due datetime.
+   - You SHOULD create reminders for assignments inferred from schedule[].deliverables
+     as long as their dates come directly from schedule[].
+
+7. Events for major assessments:
+   - For MAJOR assessments with known due datetime:
+       - You MAY also create a calendar event at the due datetime:
+           - title: "<course_code> <title> due".
+
+8. Safety:
+   - If you CANNOT infer a concrete datetime from the inputs, skip that reminder/event.
+   - Do NOT hallucinate extra courses, sections, or assignments.
+   - Do NOT change or fabricate tool schemas.
+
+9. Output:
+   - Return ONLY the JSON object with "events" and "reminders".
+   - No markdown, no comments.
 """
 
 
@@ -104,7 +162,8 @@ def build_plan(parsed_syllabi: list[dict]) -> Plan:
     }
 
     completion = client.chat.completions.create(
-        model="gpt-4o",
+        model="gpt-5",
+        response_format={"type": "json_object"},
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {
@@ -115,7 +174,7 @@ def build_plan(parsed_syllabi: list[dict]) -> Plan:
         ],
     )
 
-    plan_json = completion.choices[0].message.content
+    plan_json = completion.choices[0].message.content or "{}"
     plan_data = json.loads(plan_json)
     plan = Plan(
         events=[
