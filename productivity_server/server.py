@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-from dataclasses import asdict
 from fastmcp import FastMCP
 
 from productivity_server.models import CalendarEvent, Reminder
