@@ -28,7 +28,7 @@ def extract_pdf_pages(path_or_url: str) -> list[str]:
     Extracts text from a local or remote PDF.
     Simple, blocking, good enough for demo.
     :param path_or_url: A local file path or a URL to a PDF file.
-    :return: The text contents of the PDF
+    :return: The text contents of the PDF as a list of pages
     """
     pdf_path = _load_pdf_path(path_or_url)
     pages: list[str] = []
@@ -38,4 +38,15 @@ def extract_pdf_pages(path_or_url: str) -> list[str]:
             if text:
                 pages.append(text.strip())
     return pages
+
+
+def extract_pdf_text(path_or_url: str) -> str:
+    """
+    Extracts all text from a local or remote PDF and returns as a single string.
+    Simple, blocking, good enough for demo.
+    :param path_or_url: A local file path or a URL to a PDF file.
+    :return: The text contents of the PDF as a single string
+    """
+    pages = extract_pdf_pages(path_or_url)
+    return "\n\n".join(pages)
 
