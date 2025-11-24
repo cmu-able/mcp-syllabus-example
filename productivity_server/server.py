@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 from dataclasses import asdict
-from mcp.server import FastMCP
+from fastmcp import FastMCP
 
-from productivity_server.store import add_event, add_reminder, calendar_events, CalendarEvent, Reminder, reminders
+from productivity_server.models import CalendarEvent, Reminder
+from productivity_server.store import add_event, add_reminder, calendar_events, reminders
 
 mcp = FastMCP("ProductivitySerer")
 
@@ -13,7 +14,7 @@ def create_calendar_event(
         start: str,
         end: str,
         location: str = ""
-) -> dict:
+) -> CalendarEvent:
     """Creates a calendar event.
 
     :param title: Title of the event.
@@ -29,7 +30,7 @@ def create_calendar_event(
         location=location
     )
     add_event(event)
-    return {"status": "ok", "event": asdict(event)}
+    return event
 
 
 @mcp.tool()
@@ -37,7 +38,7 @@ def create_reminder(
         title: str,
         due: str,
         notes: str = ""
-) -> dict:
+) -> Reminder:
     """Creates a reminder.
 
     :param title: Title of the reminder.
@@ -51,8 +52,7 @@ def create_reminder(
         notes=notes
     )
     add_reminder(reminder)
-    return {"status": "ok", "reminder": asdict(reminder)}
-
+    return reminder
 
 def get_calendar_events() -> list[CalendarEvent]:
     """Internal function to get calendar events as dataclass objects.
@@ -71,21 +71,21 @@ def get_reminders() -> list[Reminder]:
 
 
 @mcp.tool()
-def list_calendar_events() -> list[dict]:
+def list_calendar_events() -> list[CalendarEvent]:
     """Lists all calendar events.
 
     :return: A list of calendar event dictionaries.
     """
-    return [asdict(event) for event in calendar_events]
+    return calendar_events
 
 
 @mcp.tool()
-def list_reminders() -> list[dict]:
+def list_reminders() -> list[Reminder]:
     """Lists all reminders.
 
     :return: A list of reminder dictionaries.
     """
-    return [asdict(reminder) for reminder in reminders]
+    return reminders
 
 
 if __name__ == "__main__":

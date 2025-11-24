@@ -1,20 +1,9 @@
 # -*- coding: utf-8 -*-
-from dataclasses import dataclass
+from .models import CalendarEvent, Reminder
 
 
-@dataclass
-class CalendarEvent:
-    title: str
-    start: str
-    end: str
-    location: str = ""
-
-
-@dataclass
-class Reminder:
-    title: str
-    due: str
-    notes: str = ""
+# In-memory storage for calendar events and reminders
+# In a real application, this would be replaced with a persistent database
 
 
 calendar_events: list[CalendarEvent] = []
