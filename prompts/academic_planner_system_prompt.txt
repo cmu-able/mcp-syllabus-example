@@ -25,6 +25,9 @@ Your job is to create a unified JSON plan:
   ],
   "reminders": [
     { "title": "string", "due": "YYYY-MM-DDTHH:MM:SS", "notes": "string" }
+  ],
+  "assignments": [
+    { "course_code": "string", "title": "string", "due": "YYYY-MM-DDTHH:MM:SS", "weight_percent": float, "category": "string", "is_major": bool, "notes": "string" }
   ]
 }
 
@@ -107,6 +110,19 @@ Rules:
    - Do NOT hallucinate extra courses, sections, or assignments.
    - Do NOT change or fabricate tool schemas.
 
-9. Output:
-   - Return ONLY the JSON object with "events" and "reminders".
+9. Assignments output:
+   - For each assignment (from assignments[] or inferred from schedule[]) that has a resolved due datetime:
+       - Add an entry to "assignments" array with:
+           - course_code: from the syllabus
+           - title: assignment title
+           - due: the resolved ISO datetime string
+           - weight_percent: from assignments[] (or 0.0 if inferred)
+           - category: from assignments[] (or "other" if inferred)
+           - is_major: true/false based on classification rules in step 3
+           - notes: any relevant notes
+   - Include ALL assignments with resolved due dates, even if they don't generate reminders.
+   - This provides a comprehensive assignment list across all courses.
+
+10. Output:
+   - Return ONLY the JSON object with "events", "reminders", and "assignments".
    - No markdown, no comments.
