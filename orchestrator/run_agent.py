@@ -28,6 +28,59 @@ console = Console()
 # Load system prompt from file
 SYSTEM_PROMPT = load_prompt("orchestrator_system_prompt")
 
+
+def format_result_for_display(result: t.Any, verbose: bool) -> None:
+    """Format and print a step result.
+    
+    Args:
+        result: The result to format (dataclass, list, string, etc.)
+        verbose: Whether to show full details for lists
+    """
+    if hasattr(result, "__dataclass_fields__"):
+        # It's a dataclass - convert to dict for pretty printing
+        result_dict = asdict(result)
+        console.print("    [dim]Result:[/dim]")
+        console.print(JSON(json.dumps(result_dict, indent=2)))
+    elif isinstance(result, list) and result and hasattr(result[0], "__dataclass_fields__"):
+        # List of dataclasses
+        result_dicts = [asdict(item) for item in result]
+        console.print(f"    [dim]Result: {len(result)} item(s)[/dim]")
+        if verbose:
+            console.print(JSON(json.dumps(result_dicts, indent=2)))
+    elif isinstance(result, str) and result.strip():
+        # Non-empty string
+        console.print(f"    [dim]Result:[/dim] {result}")
+    # Skip empty strings or other cases
+
+
+def create_progress_callback(verbose: bool) -> t.Callable[[int, int, ExecutionStep, t.Optional[t.Any]], None]:
+    """Create a progress callback function with verbose setting.
+    
+    Args:
+        verbose: Whether to display full result details
+        
+    Returns:
+        Progress callback function
+    """
+    def progress_callback(current: int, total: int, step: ExecutionStep, result: t.Optional[t.Any]) -> None:
+        """Report progress as each step executes.
+        
+        Args:
+            current: Current step number
+            total: Total number of steps
+            step: The step being executed
+            result: The result (None if starting, actual result if completed)
+        """
+        if result is None:
+            # Step is starting
+            console.print(f"  [{current}/{total}] Executing: {step.service_name}.{step.tool_name}")
+        else:
+            # Step completed - show result if verbose
+            if verbose:
+                format_result_for_display(result, verbose)
+    
+    return progress_callback
+
 # Initialize OpenAI client
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
@@ -178,8 +231,7 @@ async def async_main(
         )
 
     # Create execution plan
-    if verbose:
-        console.print("\n[bold green]Creating execution plan...[/bold green]")
+    console.print("\n[bold green]Creating execution plan...[/bold green]")
     try:
         plan = await create_execution_plan(user_goal, model=model)
     except Exception as e:
@@ -197,9 +249,7 @@ async def async_main(
     steps_table.add_column("Service", style="green")
     steps_table.add_column("Tool", style="yellow")
     steps_table.add_column("Dependencies", style="blue")
-    
-    if verbose:
-        steps_table.add_column("Arguments", style="white")
+    steps_table.add_column("Arguments", style="white")
 
     for step in plan.steps:
         deps = ", ".join(step.depends_on) if step.depends_on else "(none)"
@@ -256,37 +306,13 @@ async def async_main(
         return
 
     # Execute the plan
-    if not verbose:
-        console.print("\n[bold green]Executing plan...[/bold green]")
+    console.print("\n[bold green]Executing plan...[/bold green]")
     
     from orchestrator.executor import execute_plan
-    from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
     
     try:
-        if verbose:
-            # Verbose mode: show full progress details
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                console=console,
-            ) as progress:
-                exec_task = progress.add_task(
-                    f"Executing {len(plan.steps)} steps...",
-                    total=len(plan.steps)
-                )
-                results = await execute_plan(plan)
-                progress.update(exec_task, completed=len(plan.steps))
-            console.print("[green]✓ Plan executed successfully[/green]")
-        else:
-            # Non-verbose mode: show step-by-step execution
-            results = {}
-            for i, step in enumerate(plan.steps, 1):
-                console.print(f"  [{i}/{len(plan.steps)}] Executing: {step.service_name}.{step.tool_name}")
-                # Execute individual step
-                from orchestrator.executor import execute_plan
-                step_plan = ExecutionPlan(steps=[step], rationale="")
-                step_results = await execute_plan(step_plan)
-                results.update(step_results)
+        progress_callback = create_progress_callback(verbose)
+        results = await execute_plan(plan, progress_callback=progress_callback)
         
         # Display summary of results
         if verbose:
@@ -322,6 +348,12 @@ async def async_main(
         summary_table.add_row("🔄 Steps Executed", str(len(results)))
         
         console.print(summary_table)
+        
+        # Display any string results (formatted output from display tools)
+        # Only show multi-line formatted strings (like tables), not JSON
+        for step_id, result in results.items():
+            if isinstance(result, str) and result.strip() and "\n" in result and not result.strip().startswith("{"):
+                console.print(f"\n{result}")
         
     except Exception as e:
         console.print(f"\n[red]❌ Execution failed:[/red] {e}")
