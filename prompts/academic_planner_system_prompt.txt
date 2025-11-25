@@ -116,12 +116,21 @@ Rules:
            - course_code: from the syllabus
            - title: assignment title
            - due: the resolved ISO datetime string
-           - weight_percent: from assignments[] (or 0.0 if inferred)
+           - weight_percent: calculated as follows:
+               * If assignment title/type appears directly in assignments[], use that weight_percent
+               * If inferred from schedule[] and matches a grouped assignment pattern:
+                   - Look for assignments[] entries like "Small assignments (N) [S]" with total weight
+                   - Check if the schedule deliverable has a matching tag (e.g., [S], [M], [L])
+                   - Divide the group's total weight by the count (e.g., 38.5% / 7 items = 5.5% each)
+                   - Use the calculated per-item weight
+               * Otherwise, use 0.0
            - category: from assignments[] (or "other" if inferred)
            - is_major: true/false based on classification rules in step 3
            - notes: any relevant notes
    - Include ALL assignments with resolved due dates, even if they don't generate reminders.
    - This provides a comprehensive assignment list across all courses.
+   - CRITICAL: When syllabi contain grouped assignments (e.g., "7 small [S]", "2 medium [M]"), 
+     you MUST divide the total weight by the count to get individual weights.
 
 10. Output:
    - Return ONLY the JSON object with "events", "reminders", and "assignments".
