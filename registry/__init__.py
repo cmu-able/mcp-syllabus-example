@@ -3,6 +3,13 @@ from productivity_server.server import mcp as productivity_mcp
 from syllabus_server.server import mcp as syllabus_mcp
 from academic_planner.server import mcp as academic_planner_mcp
 
+# Server registry mapping server names to MCP instances
+SERVER_REGISTRY = {
+    "syllabus_server": syllabus_mcp,
+    "productivity_server": productivity_mcp,
+    "academic_planner_server": academic_planner_mcp,
+}
+
 async def list_tool_schemas() -> list[dict]:
     """Collect and return JSON schemas of all available tools from MCP servers."""
     schemas = []
