@@ -67,8 +67,8 @@ def parse_syllabus(pdf_path_or_url: str) -> ParsedSyllabus:
     schedule_text = "\n\n".join(schedule_pages) if schedule_pages else ""
 
     model_input = {
-        "full_text": full_text[:14000],          # keep within context
-        "schedule_text": schedule_text[:6000],   # focused messy part
+        "full_text": full_text[:30000],          # increased for full semester schedules
+        "schedule_text": schedule_text[:15000],   # increased to capture complete schedule tables
     }
 
     completion = client.chat.completions.create(
