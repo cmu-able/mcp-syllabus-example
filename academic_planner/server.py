@@ -1,12 +1,19 @@
 # -*- coding: utf-8 -*-
 import json
+import os
 
 from fastmcp import FastMCP
+from openai import OpenAI
 from academic_planner.models import PlannedEvent, PlannedReminder, Plan
 from prompts import load_prompt
 from syllabus_server.models import ParsedSyllabus
 
 mcp = FastMCP("AcademicPlanner")
+
+_api_key = os.getenv("OPENAI_API_KEY")
+if not _api_key:
+    raise RuntimeError("OPENAI_API_KEY environment variable is not set.")
+client = OpenAI(api_key=_api_key)
 
 SYSTEM_PROMPT = load_prompt("academic_planner_system_prompt")
 
@@ -20,16 +27,22 @@ def create_academic_plan(
     :return: A Plan object containing events and reminders.
     """
 
-    completion = mcp.chat.completions.create(
+    from dataclasses import asdict
+    
+    # Serialize syllabi to dict format for LLM
+    syllabi_dicts = [
+        asdict(s) if hasattr(s, "__dataclass_fields__") else s
+        for s in syllabi
+    ]
+    
+    completion = client.chat.completions.create(
         model="gpt-5",
         response_format={"type": "json_object"},
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {
                 "role": "user",
-                "content": {
-                    "syllabi": [s.__dict__ for s in syllabi],
-                },
+                "content": json.dumps({"syllabi": syllabi_dicts}),
             },
         ],
     )
