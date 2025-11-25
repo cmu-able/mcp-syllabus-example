@@ -5,15 +5,29 @@ variable substitution, and tool invocation.
 """
 import typing as t
 from dataclasses import asdict
+from enum import Enum
 
 from orchestrator.models import ExecutionPlan, ExecutionStep
 
+class ExecutionState(Enum):
+    """State of execution for a plan or step."""
+    STARTED = "STARTED"
+    IN_PROGRESS = "IN_PROGRESS"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
 
-async def execute_plan(plan: ExecutionPlan) -> dict[str, t.Any]:
+async def execute_plan(
+    plan: ExecutionPlan,
+    progress_callback: t.Optional[t.Callable[[int, int, ExecutionStep, t.Optional[t.Any]], None]] = None
+) -> dict[str, t.Any]:
     """Execute an execution plan and return the results.
     
     Args:
         plan: The execution plan to execute
+        progress_callback: Optional callback function called before and after executing each step.
+                          Called with (current_step_num, total_steps, step, result).
+                          - Before execution: result is None
+                          - After execution: result contains the step's output
         
     Returns:
         Dictionary mapping step IDs to their results
@@ -21,24 +35,7 @@ async def execute_plan(plan: ExecutionPlan) -> dict[str, t.Any]:
     Raises:
         RuntimeError: If a step fails or a tool is not found
     """
-    from syllabus_server.server import parse_syllabus
-    from productivity_server.server import (
-        create_calendar_event,
-        create_reminder,
-        create_calendar_events_bulk,
-        create_reminders_bulk,
-    )
-    from academic_planner.server import create_academic_plan
-    
-    # Map service.tool to actual function
-    tool_registry = {
-        "syllabus_server.parse_syllabus": parse_syllabus,
-        "productivity_server.create_calendar_event": create_calendar_event,
-        "productivity_server.create_reminder": create_reminder,
-        "productivity_server.create_calendar_events_bulk": create_calendar_events_bulk,
-        "productivity_server.create_reminders_bulk": create_reminders_bulk,
-        "academic_planner_server.create_academic_plan": create_academic_plan,
-    }
+    from registry import SERVER_REGISTRY
     
     # Store results by step ID
     results: dict[str, t.Any] = {}
@@ -67,17 +64,30 @@ async def execute_plan(plan: ExecutionPlan) -> dict[str, t.Any]:
                 f"Remaining steps: {remaining}"
             )
         
+        # Report step start if callback provided
+        current_step_num = len(completed) + 1
+        if progress_callback:
+            progress_callback(current_step_num, len(plan.steps), executable_step, None)
+        
         # Resolve arguments (substitute variable references)
         resolved_args = _resolve_arguments(executable_step.arguments, results)
         
-        # Get the tool function
-        tool_key = f"{executable_step.service_name}.{executable_step.tool_name}"
-        tool_func = tool_registry.get(tool_key)
+        # Get the MCP server
+        mcp_server = SERVER_REGISTRY.get(executable_step.service_name)
+        if mcp_server is None:
+            raise RuntimeError(
+                f"Server not found: {executable_step.service_name}. "
+                f"Available servers: {list(SERVER_REGISTRY.keys())}"
+            )
+        
+        # Get the tool from the MCP server
+        tools = await mcp_server.get_tools()
+        tool_func = tools.get(executable_step.tool_name)
         
         if tool_func is None:
             raise RuntimeError(
-                f"Tool not found: {tool_key}. "
-                f"Available tools: {list(tool_registry.keys())}"
+                f"Tool '{executable_step.tool_name}' not found in server '{executable_step.service_name}'. "
+                f"Available tools: {list(tools.keys())}"
             )
         
         # Execute the tool
@@ -89,13 +99,25 @@ async def execute_plan(plan: ExecutionPlan) -> dict[str, t.Any]:
             
             # Store the result as-is to preserve dataclass objects
             results[executable_step.id] = result
-                
             completed.add(executable_step.id)
+            
+            # Report step completion if callback provided
+            if progress_callback:
+                progress_callback(current_step_num, len(plan.steps), executable_step, result)
+
+            # Report the result
+            if progress_callback:
+                progress_callback(
+                    ExecutionState.COMPLETED,
+                    len(completed),
+                    len(plan.steps),
+                    executable_step
+                )
             
         except Exception as e:
             raise RuntimeError(
                 f"Error executing step '{executable_step.id}' "
-                f"({tool_key}): {e}"
+                f"({executable_step.service_name}:{executable_step.tool_name}): {e}"
             ) from e
     
     return results
