@@ -11,13 +11,6 @@ from .models import (Assignment, CourseSection, ExplicitMeeting, MeetingPattern,
                      ScheduleEntry)
 from .pdf_utils import extract_pdf_pages
 
-# -----------------------------
-# Imports from models module
-# -----------------------------
-
-# -----------------------------
-# MCP + OpenAI client setup
-# -----------------------------
 
 mcp = FastMCP("SyllabusServer")
 
