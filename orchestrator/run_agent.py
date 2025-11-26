@@ -25,8 +25,8 @@ from orchestrator.models import ExecutionPlan, ExecutionStep
 # Initialize console for output
 console = Console()
 
-# Load system prompt from file
-SYSTEM_PROMPT = load_prompt("orchestrator_system_prompt")
+# Load system prompt template from file
+SYSTEM_PROMPT_TEMPLATE = load_prompt("orchestrator_system_prompt")
 
 
 def format_result_for_display(result: t.Any, verbose: bool) -> None:
@@ -85,11 +85,12 @@ def create_progress_callback(verbose: bool) -> t.Callable[[int, int, ExecutionSt
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 
-async def create_execution_plan(user_goal: str, model: str = "gpt-4o") -> ExecutionPlan:
+async def create_execution_plan(user_goal: str, goal_description: str, model: str = "gpt-4o") -> ExecutionPlan:
     """Create an execution plan using LLM based on available tools and user goal.
     
     Args:
-        user_goal: The user's goal or task description
+        user_goal: The user's goal statement to insert into the system prompt
+        goal_description: The detailed goal description for the user message
         model: OpenAI model to use for planning (default: gpt-4o)
         
     Returns:
@@ -105,9 +106,12 @@ async def create_execution_plan(user_goal: str, model: str = "gpt-4o") -> Execut
     if not available_tools:
         raise RuntimeError("No tools available in registry")
     
+    # Format the system prompt with the user's goal
+    system_prompt = SYSTEM_PROMPT_TEMPLATE.replace("{USER_GOAL}", user_goal)
+    
     # Prepare the prompt with available tools and user goal
     user_message = {
-        "goal": user_goal,
+        "goal": goal_description,
         "available_tools": available_tools,
     }
     
@@ -116,7 +120,7 @@ async def create_execution_plan(user_goal: str, model: str = "gpt-4o") -> Execut
         model=model,
         response_format={"type": "json_object"},
         messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": json.dumps(user_message, indent=2)},
         ],
     )
@@ -201,6 +205,7 @@ async def async_main(
     dry_run: bool,
     model: str,
     verbose: bool = True,
+    prompt: t.Optional[str] = None,
 ) -> None:
     """Run the orchestrator to process PDFs and execute plan.
     
@@ -209,11 +214,23 @@ async def async_main(
         dry_run: If True, show plan but don't execute
         model: OpenAI model to use for planning
         verbose: If True, show full details; if False, show minimal output
+        prompt: Optional custom goal prompt. If not provided, prompts user for input
     """
 
-    # Build user goal from PDF files
+    # Get user goal from prompt option or interactive input
+    if prompt:
+        user_goal = prompt
+    else:
+        console.print("[bold cyan]Enter your goal for the orchestrator:[/bold cyan]")
+        console.print("[dim](Press Ctrl+D or Ctrl+Z when done)[/dim]\n")
+        user_goal = sys.stdin.read().strip()
+        if not user_goal:
+            console.print("[red]No goal provided. Exiting.[/red]")
+            raise SystemExit(1)
+    
+    # Build detailed goal description from PDF files
     pdf_list = ", ".join(syllabus_pdfs)
-    user_goal = (
+    goal_description = (
         f"Create a unified semester schedule from the following syllabus PDFs: {pdf_list}. "
         f"Parse each PDF, create an academic plan with all course events and assignments, "
         f"and add them to the calendar and reminder systems."
@@ -233,7 +250,7 @@ async def async_main(
     # Create execution plan
     console.print("\n[bold green]Creating execution plan...[/bold green]")
     try:
-        plan = await create_execution_plan(user_goal, model=model)
+        plan = await create_execution_plan(user_goal, goal_description, model=model)
     except Exception as e:
         console.print(f"[red]Error creating plan:[/red] {e}")
         raise SystemExit(1)
@@ -389,19 +406,29 @@ if __name__ == "__main__":
         default="gpt-5",
         help="OpenAI model to use for planning (default: gpt-5).",
     )
+    @click.option(
+        "--prompt",
+        "-p",
+        type=str,
+        help="Custom goal prompt for the orchestrator. If not provided, will prompt interactively.",
+    )
     def run(
         pdfs: tuple[str, ...],
         verbose: bool,
         dry_run: bool,
         model: str,
+        prompt: t.Optional[str],
     ) -> None:
         """Run the orchestrator to process syllabus PDFs.
         
         PDFS: Paths to syllabus PDF files to process.
         
         Examples:
-            # Process PDFs with minimal output
+            # Process PDFs with minimal output (interactive prompt)
             python -m orchestrator.run_agent run pdfs/17603.pdf pdfs/17611.pdf
+            
+            # Process with custom goal prompt
+            python -m orchestrator.run_agent run --prompt "Your goal is to extract all assignment due dates" pdfs/17603.pdf
             
             # Process with verbose output showing all JSON data
             python -m orchestrator.run_agent run --verbose pdfs/17603.pdf
@@ -409,7 +436,7 @@ if __name__ == "__main__":
             # Generate plan without executing (dry run)
             python -m orchestrator.run_agent run --dry-run pdfs/17603.pdf
         """
-        asyncio.run(async_main(pdfs, dry_run=dry_run, model=model, verbose=verbose))
+        asyncio.run(async_main(pdfs, dry_run=dry_run, model=model, verbose=verbose, prompt=prompt))
     
     @cli.command()
     @click.argument("tool_names", nargs=-1, type=str)
