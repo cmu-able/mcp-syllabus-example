@@ -66,16 +66,18 @@ def create_progress_callback(verbose: bool) -> t.Callable[[int, int, ExecutionSt
         """Report progress as each step executes.
         
         Args:
-            current: Current step number
+            current: Current step number (1-indexed)
             total: Total number of steps
             step: The step being executed
             result: The result (None if starting, actual result if completed)
         """
         if result is None:
             # Step is starting
-            console.print(f"  [{current}/{total}] Executing: {step.service_name}.{step.tool_name}")
+            console.print(f"  [{current}/{total}] ▶ Executing: {step.service_name}.{step.tool_name}")
         else:
-            # Step completed - show result if verbose
+            # Step completed
+            console.print(f"  [{current}/{total}] ✓ Completed: {step.service_name}.{step.tool_name}")
+            # Show result if verbose
             if verbose:
                 format_result_for_display(result, verbose)
     
