@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import os
+import typing as t
+from dataclasses import asdict
 
 from fastmcp import FastMCP
 from openai import OpenAI
@@ -11,13 +13,6 @@ from .models import (Assignment, CourseSection, ExplicitMeeting, MeetingPattern,
                      ScheduleEntry)
 from .pdf_utils import extract_pdf_pages
 
-# -----------------------------
-# Imports from models module
-# -----------------------------
-
-# -----------------------------
-# MCP + OpenAI client setup
-# -----------------------------
 
 mcp = FastMCP("SyllabusServer")
 
@@ -155,6 +150,115 @@ def parse_syllabus(pdf_path_or_url: str) -> ParsedSyllabus:
     )
 
     return parsed
+
+
+def _serialize_syllabus_for_llm(syllabus: ParsedSyllabus) -> dict[str, t.Any]:
+    """Convert ParsedSyllabus to a JSON-serializable dict for LLM consumption.
+    
+    Args:
+        syllabus: The parsed syllabus data
+        
+    Returns:
+        Dictionary representation suitable for JSON serialization
+    """
+    return asdict(syllabus)
+
+
+@mcp.tool()
+def answer_syllabus_question(
+    syllabus_data: ParsedSyllabus,
+    question: str,
+) -> str:
+    """Answer a question about a single parsed syllabus using an LLM.
+    
+    This tool takes structured syllabus data and answers natural language questions
+    about it. Examples:
+    - "What are the course policies?"
+    - "What is the late policy?"
+    - "When is the first exam?"
+    - "How many assignments are there?"
+    
+    Args:
+        syllabus_data: The parsed syllabus data structure
+        question: The natural language question to answer
+        
+    Returns:
+        A natural language answer to the question
+    """
+    # Convert syllabus to JSON for the LLM
+    syllabus_json = _serialize_syllabus_for_llm(syllabus_data)
+    
+    system_prompt = (
+        "You are a helpful assistant that answers questions about academic syllabi. "
+        "You will be given structured syllabus data in JSON format and a question. "
+        "Provide clear, concise answers based on the data provided. "
+        "If the information isn't in the data, say so."
+    )
+    
+    user_message = {
+        "syllabus": syllabus_json,
+        "question": question,
+    }
+    
+    completion = client.chat.completions.create(
+        model="gpt-5",
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": json.dumps(user_message, indent=2)},
+        ],
+    )
+    
+    return completion.choices[0].message.content or "Unable to generate answer."
+
+
+@mcp.tool()
+def answer_question_about_syllabi(
+    syllabi_data: list[ParsedSyllabus],
+    question: str,
+) -> str:
+    """Answer a question about multiple parsed syllabi using an LLM.
+    
+    This tool takes multiple structured syllabus data and answers questions that
+    may involve comparison, consolidation, or analysis across courses. Examples:
+    - "Consolidate all the course policies"
+    - "Which course has the strictest late policy?"
+    - "What's the total workload across all courses?"
+    - "Compare the exam schedules"
+    - "List all assignment due dates across courses"
+    
+    Args:
+        syllabi_data: List of parsed syllabus data structures
+        question: The natural language question to answer
+        
+    Returns:
+        A natural language answer to the question
+    """
+    # Convert all syllabi to JSON for the LLM
+    syllabi_json = [_serialize_syllabus_for_llm(s) for s in syllabi_data]
+    
+    system_prompt = (
+        "You are a helpful assistant that answers questions about multiple academic syllabi. "
+        "You will be given structured data for multiple courses in JSON format and a question. "
+        "Provide clear, well-organized answers that may involve comparing, consolidating, or "
+        "analyzing information across the courses. "
+        "When appropriate, organize your response by course. "
+        "If the information isn't in the data, say so."
+    )
+    
+    user_message = {
+        "syllabi": syllabi_json,
+        "question": question,
+    }
+    
+    completion = client.chat.completions.create(
+        model="gpt-5",
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": json.dumps(user_message, indent=2)},
+        ],
+    )
+    
+    return completion.choices[0].message.content or "Unable to generate answer."
 
 
 if __name__ == "__main__":

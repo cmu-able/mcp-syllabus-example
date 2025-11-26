@@ -4,7 +4,6 @@ This module handles the execution of execution plans, including dependency resol
 variable substitution, and tool invocation.
 """
 import typing as t
-from dataclasses import asdict
 from enum import Enum
 
 from orchestrator.models import ExecutionPlan, ExecutionStep
