@@ -228,13 +228,9 @@ async def async_main(
             console.print("[red]No goal provided. Exiting.[/red]")
             raise SystemExit(1)
     
-    # Build detailed goal description from PDF files
+    # Build context about the PDFs (without dictating the goal)
     pdf_list = ", ".join(syllabus_pdfs)
-    goal_description = (
-        f"Create a unified semester schedule from the following syllabus PDFs: {pdf_list}. "
-        f"Parse each PDF, create an academic plan with all course events and assignments, "
-        f"and add them to the calendar and reminder systems."
-    )
+    goal_description = f"Process the following syllabus PDFs: {pdf_list}"
 
     # Display header (only in verbose mode)
     if verbose:
