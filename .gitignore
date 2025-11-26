@@ -10,3 +10,9 @@ wheels/
 .venv
 /.env
 verbose.out
+
+# Private course materials
+pdfs/
+
+# IDE files
+.idea/
