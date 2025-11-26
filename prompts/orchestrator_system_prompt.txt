@@ -67,4 +67,10 @@ COMMON WORKFLOW PATTERNS:
 2. Extract or analyze specific information based on the user's goal
 3. Use display tools if appropriate to show results
 
+**For answering questions about syllabi:**
+1. Parse the syllabus/syllabi using syllabus.parse_syllabus
+2. For single syllabus: Use syllabus.answer_syllabus_question with the parsed data and question
+3. For multiple syllabi (comparison/consolidation): Use syllabus.answer_question_about_syllabi with a list of parsed data and question
+4. Return the natural language answer
+
 Output ONLY the JSON execution plan, no markdown or explanations.
