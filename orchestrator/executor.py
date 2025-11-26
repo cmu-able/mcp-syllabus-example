@@ -3,6 +3,7 @@
 This module handles the execution of execution plans, including dependency resolution,
 variable substitution, and tool invocation.
 """
+import asyncio
 import typing as t
 from enum import Enum
 
@@ -17,9 +18,12 @@ class ExecutionState(Enum):
 
 async def execute_plan(
     plan: ExecutionPlan,
-    progress_callback: t.Optional[t.Callable[[int, int, ExecutionStep, t.Optional[t.Any]], None]] = None
+    progress_callback: t.Optional[t.Callable[[int, int, ExecutionStep, t.Optional[t.Any]], None]] = None,
+    max_concurrent: t.Optional[int] = None
 ) -> dict[str, t.Any]:
     """Execute an execution plan and return the results.
+    
+    Steps with satisfied dependencies are executed in parallel batches.
     
     Args:
         plan: The execution plan to execute
@@ -27,6 +31,8 @@ async def execute_plan(
                           Called with (current_step_num, total_steps, step, result).
                           - Before execution: result is None
                           - After execution: result contains the step's output
+        max_concurrent: Optional limit on number of steps to execute concurrently.
+                       If None (default), all ready steps execute in parallel.
         
     Returns:
         Dictionary mapping step IDs to their results
@@ -42,50 +48,112 @@ async def execute_plan(
     # Track completed steps
     completed: set[str] = set()
     
-    # Execute steps in dependency order
+    # Create semaphore for concurrency limiting if specified
+    semaphore = asyncio.Semaphore(max_concurrent) if max_concurrent else None
+    
+    # Execute steps in dependency order, with parallelism
     while len(completed) < len(plan.steps):
-        # Find a step that can be executed (all dependencies completed)
-        executable_step = None
+        # Find ALL steps that can be executed (all dependencies completed)
+        executable_steps: list[ExecutionStep] = []
         for step in plan.steps:
             if step.id in completed:
                 continue
             
             # Check if all dependencies are completed
             if all(dep in completed for dep in step.depends_on):
-                executable_step = step
-                break
+                executable_steps.append(step)
         
-        if executable_step is None:
-            # No executable step found - circular dependency or missing step
+        if not executable_steps:
+            # No executable steps found - circular dependency or missing step
             remaining = [s.id for s in plan.steps if s.id not in completed]
             raise RuntimeError(
                 f"Cannot execute plan: circular dependency or missing steps. "
                 f"Remaining steps: {remaining}"
             )
         
+        # Execute all ready steps in parallel
+        tasks = []
+        for i, step in enumerate(executable_steps):
+            # Assign unique step numbers to parallel tasks
+            step_number = len(completed) + i + 1
+            task = _execute_step(
+                step=step,
+                results=results,
+                progress_callback=progress_callback,
+                total_steps=len(plan.steps),
+                step_number=step_number,
+                semaphore=semaphore
+            )
+            tasks.append(task)
+        
+        # Wait for all tasks in this batch to complete
+        step_results = await asyncio.gather(*tasks)
+        
+        # Update results and completed set
+        for step, result in zip(executable_steps, step_results):
+            results[step.id] = result
+            completed.add(step.id)
+            
+            # Report step completion if callback provided
+            if progress_callback:
+                progress_callback(len(completed), len(plan.steps), step, result)
+    
+    return results
+
+
+async def _execute_step(
+    step: ExecutionStep,
+    results: dict[str, t.Any],
+    progress_callback: t.Optional[t.Callable[[int, int, ExecutionStep, t.Optional[t.Any]], None]],
+    total_steps: int,
+    step_number: int,
+    semaphore: t.Optional[asyncio.Semaphore]
+) -> t.Any:
+    """Execute a single step, potentially in parallel with other steps.
+    
+    Args:
+        step: The step to execute
+        results: Dictionary of completed step results (for dependency resolution)
+        progress_callback: Optional callback for progress reporting
+        total_steps: Total number of steps in the plan
+        step_number: The step number to display (1-indexed)
+        semaphore: Optional semaphore for concurrency limiting
+        
+    Returns:
+        The result of executing the step
+        
+    Raises:
+        RuntimeError: If the server/tool is not found or execution fails
+    """
+    from registry import SERVER_REGISTRY
+    
+    # Acquire semaphore if concurrency limiting is enabled
+    if semaphore:
+        await semaphore.acquire()
+    
+    try:
         # Report step start if callback provided
-        current_step_num = len(completed) + 1
         if progress_callback:
-            progress_callback(current_step_num, len(plan.steps), executable_step, None)
+            progress_callback(step_number, total_steps, step, None)
         
         # Resolve arguments (substitute variable references)
-        resolved_args = _resolve_arguments(executable_step.arguments, results)
+        resolved_args = _resolve_arguments(step.arguments, results)
         
         # Get the MCP server
-        mcp_server = SERVER_REGISTRY.get(executable_step.service_name)
+        mcp_server = SERVER_REGISTRY.get(step.service_name)
         if mcp_server is None:
             raise RuntimeError(
-                f"Server not found: {executable_step.service_name}. "
+                f"Server not found: {step.service_name}. "
                 f"Available servers: {list(SERVER_REGISTRY.keys())}"
             )
         
         # Get the tool from the MCP server
         tools = await mcp_server.get_tools()
-        tool_func = tools.get(executable_step.tool_name)
+        tool_func = tools.get(step.tool_name)
         
         if tool_func is None:
             raise RuntimeError(
-                f"Tool '{executable_step.tool_name}' not found in server '{executable_step.service_name}'. "
+                f"Tool '{step.tool_name}' not found in server '{step.service_name}'. "
                 f"Available tools: {list(tools.keys())}"
             )
         
@@ -94,32 +162,26 @@ async def execute_plan(
         try:
             # All tools are wrapped by @mcp.tool(), so access the .fn attribute
             actual_func = tool_func.fn
-            result = actual_func(**resolved_args)
             
-            # Store the result as-is to preserve dataclass objects
-            results[executable_step.id] = result
-            completed.add(executable_step.id)
+            # Run synchronous tool functions in a thread to enable true parallelism
+            if asyncio.iscoroutinefunction(actual_func):
+                # Already async, can call directly
+                result = await actual_func(**resolved_args)
+            else:
+                # Synchronous function - run in thread pool
+                result = await asyncio.to_thread(actual_func, **resolved_args)
             
-            # Report step completion if callback provided
-            if progress_callback:
-                progress_callback(current_step_num, len(plan.steps), executable_step, result)
-
-            # Report the result
-            if progress_callback:
-                progress_callback(
-                    ExecutionState.COMPLETED,
-                    len(completed),
-                    len(plan.steps),
-                    executable_step
-                )
+            return result
             
         except Exception as e:
             raise RuntimeError(
-                f"Error executing step '{executable_step.id}' "
-                f"({executable_step.service_name}:{executable_step.tool_name}): {e}"
+                f"Error executing step '{step.id}' "
+                f"({step.service_name}:{step.tool_name}): {e}"
             ) from e
-    
-    return results
+    finally:
+        # Release semaphore if we acquired it
+        if semaphore:
+            semaphore.release()
 
 
 def _resolve_arguments(

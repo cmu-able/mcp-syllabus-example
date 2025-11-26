@@ -25,3 +25,8 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["syllabus_server", "productivity_server", "orchestrator"]
+
+[dependency-groups]
+dev = [
+    "pytest-asyncio>=1.3.0",
+]
