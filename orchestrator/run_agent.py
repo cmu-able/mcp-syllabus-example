@@ -480,16 +480,18 @@ if __name__ == "__main__":
             
             # Display schemas for requested tools
             for tool in filtered_tools:
-                console.print(f"\n[bold cyan]{tool['server']}.{tool['name']}[/bold cyan]")
-                if tool.get("description"):
-                    console.print(f"[dim]{tool['description']}[/dim]\n")
+                console.print(f"\n[bold cyan]{tool['server']}.{tool['name']}[/bold cyan]\n")
                 
-                # Display schema
-                schema_data = {
+                # Display full tool info including description
+                tool_data = {
+                    "server": tool["server"],
+                    "name": tool["name"],
+                    "title": tool.get("title", ""),
+                    "description": tool.get("description", ""),
                     "inputSchema": tool.get("inputSchema", {}),
                     "outputSchema": tool.get("outputSchema", {}),
                 }
-                console.print(JSON(json.dumps(schema_data, indent=2)))
+                console.print(JSON(json.dumps(tool_data, indent=2)))
         
         asyncio.run(show_tools())
     
