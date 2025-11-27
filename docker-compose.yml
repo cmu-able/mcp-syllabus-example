@@ -1,0 +1,95 @@
+# Docker Compose for SyllabusMCP Distributed Services
+version: '3.8'
+
+services:
+  # Syllabus parsing service (LLM-powered)
+  syllabus-service:
+    build:
+      context: .
+      dockerfile: services/syllabus_service/Dockerfile
+    container_name: syllabus-service
+    ports:
+      - "8001:8001"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    volumes:
+      # Mount PDFs directory if you have local PDF files to process
+      - ./pdfs:/app/pdfs:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - syllabus-network
+
+  # Academic planning service (LLM-powered)
+  academic-planner-service:
+    build:
+      context: .
+      dockerfile: services/academic_planner_service/Dockerfile
+    container_name: academic-planner-service
+    ports:
+      - "8002:8002"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - syllabus-network
+
+  # Productivity service (calendar/reminders)
+  productivity-service:
+    build:
+      context: .
+      dockerfile: services/productivity_service/Dockerfile
+    container_name: productivity-service
+    ports:
+      - "8003:8003"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+    networks:
+      - syllabus-network
+
+  # MCP Gateway - unified entry point
+  mcp-gateway:
+    build:
+      context: .
+      dockerfile: mcp_gateway/Dockerfile
+    container_name: mcp-gateway
+    environment:
+      - SYLLABUS_SERVICE_URL=http://syllabus-service:8001
+      - ACADEMIC_PLANNER_SERVICE_URL=http://academic-planner-service:8002
+      - PRODUCTIVITY_SERVICE_URL=http://productivity-service:8003
+    depends_on:
+      syllabus-service:
+        condition: service_healthy
+      academic-planner-service:
+        condition: service_healthy
+      productivity-service:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - syllabus-network
+
+networks:
+  syllabus-network:
+    driver: bridge
+    name: syllabus-distributed-network
+
+volumes:
+  # Optional: persistent storage for productivity service data
+  productivity-data:
+    driver: local
