@@ -1,0 +1,1 @@
+# MCP academic planner wrapper package
