@@ -79,15 +79,15 @@ uv run python orchestrator/run_agent.py run \
   --prompt "Extract all assignment due dates from the syllabi" \
   syllabus1.pdf syllabus2.pdf
 
-# Create calendar events only
+# Process all PDFs in a directory
 uv run python orchestrator/run_agent.py run \
   --prompt "Parse syllabi and create calendar events for all class sessions" \
-  pdfs/*.pdf
+  ../syllabus-pdfs
 
-# Analyze workload distribution
+# Mix files and directories
 uv run python orchestrator/run_agent.py run \
   --prompt "Analyze workload distribution and identify busy weeks" \
-  syllabus1.pdf syllabus2.pdf
+  syllabus1.pdf ../more-syllabi syllabus2.pdf
 ```
 
 #### Interactive Input Mode
@@ -131,15 +131,15 @@ uv run python orchestrator/run_agent.py run \
   --prompt "Compare the late submission policies across all courses" \
   course1.pdf course2.pdf course3.pdf
 
-# Consolidate information
+# Process entire directory of syllabi
 uv run python orchestrator/run_agent.py run \
   --prompt "Consolidate all course policies into a summary" \
-  pdfs/*.pdf
+  ../syllabus-pdfs
 
-# Workload analysis
+# Workload analysis across all syllabi
 uv run python orchestrator/run_agent.py run \
   --prompt "Which course has the heaviest workload?" \
-  pdfs/*.pdf
+  ../syllabus-pdfs
 ```
 
 ### Example Prompts
@@ -189,7 +189,11 @@ uv run python orchestrator/run_agent.py run \
 
 #### Default Academic Planning
 ```bash
+# Process individual files
 uv run python orchestrator/run.py syllabus1.pdf syllabus2.pdf
+
+# Process all PDFs in a directory
+uv run python orchestrator/run.py ../syllabus-pdfs
 ```
 
 #### Custom Goal-Driven Processing
@@ -198,6 +202,11 @@ uv run python orchestrator/run.py syllabus1.pdf syllabus2.pdf
 uv run python orchestrator/run_agent.py run \
   --prompt "Your custom goal here" \
   syllabus1.pdf syllabus2.pdf
+
+# Process directory with custom goal
+uv run python orchestrator/run_agent.py run \
+  --prompt "Your custom goal here" \
+  ../syllabus-pdfs
 ```
 
 #### Interactive Question Mode
@@ -304,8 +313,10 @@ The project follows strict code quality guidelines:
 - `OPENAI_API_KEY` - Required for AI-powered parsing (GPT-4/GPT-5)
 
 ### Supported Input Formats
-- **PDF files** - Local file paths or URLs
-- **Multiple syllabi** - Batch processing supported
+- **PDF files** - Individual local file paths
+- **Directories** - Automatically processes all `*.pdf` files in a directory
+- **Mixed inputs** - Combine files and directories in the same command
+- **Multiple syllabi** - Batch processing with parallel execution
 - **Various syllabus formats** - Handles different academic document structures
 
 ## 🎓 Educational Context
