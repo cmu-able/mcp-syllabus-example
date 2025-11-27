@@ -18,9 +18,9 @@ from rich.panel import Panel
 from rich.table import Table
 
 from prompts import load_prompt
-from registry import list_tool_schemas
 from orchestrator.models import ExecutionPlan, ExecutionStep
 from orchestrator.utils import expand_pdf_paths
+from orchestrator.shared import get_openai_client, list_available_tools
 
 
 # Initialize console for output
@@ -84,10 +84,6 @@ def create_progress_callback(verbose: bool) -> t.Callable[[int, int, ExecutionSt
     
     return progress_callback
 
-# Initialize OpenAI client
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
-
 async def create_execution_plan(user_goal: str, goal_description: str, model: str = "gpt-4o") -> ExecutionPlan:
     """Create an execution plan using LLM based on available tools and user goal.
     
@@ -103,8 +99,11 @@ async def create_execution_plan(user_goal: str, goal_description: str, model: st
         ValueError: If the LLM response is invalid or cannot be parsed
         RuntimeError: If no tools are available in the registry
     """
+    # Get OpenAI client
+    client = get_openai_client()
+    
     # Get available tools from registry
-    available_tools = await list_tool_schemas()
+    available_tools = await list_available_tools()
     
     if not available_tools:
         raise RuntimeError("No tools available in registry")
@@ -306,7 +305,7 @@ async def async_main(
     # Validate the plan
     if verbose:
         console.print("\n[bold]Validating plan...[/bold]")
-    available_tools = await list_tool_schemas()
+    available_tools = await list_available_tools()
     errors = validate_execution_plan(plan, available_tools)
 
     if errors:
@@ -457,7 +456,7 @@ if __name__ == "__main__":
         """
         async def show_tools() -> None:
             """Async function to retrieve and display tools."""
-            available_tools = await list_tool_schemas()
+            available_tools = await list_available_tools()
             
             if not available_tools:
                 console.print("[yellow]No tools available in registry[/yellow]")

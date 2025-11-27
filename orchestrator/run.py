@@ -16,18 +16,15 @@ from rich.json import JSON
 from rich.text import Text
 from rich.tree import Tree
 from prompts import load_prompt
-from registry import list_tool_schemas
 from orchestrator.utils import expand_pdf_paths
-
-from syllabus_server.server import parse_syllabus
-from productivity_server.server import (
-    create_calendar_event,
-    create_reminder, get_calendar_events, get_reminders,
-)
 from orchestrator.models import Plan, PlannedEvent, PlannedReminder
+from orchestrator.shared import (
+    get_openai_client, list_available_tools,
+    parse_syllabus_async, create_calendar_event_async, create_reminder_async,
+    get_calendar_events_async, get_reminders_async
+)
 
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 console = Console()
 
 
@@ -99,7 +96,8 @@ SYSTEM_PROMPT = load_prompt("orchestrator_system_prompt")
 
 
 def build_plan(parsed_syllabi: list[dict]) -> Plan:
-
+    client = get_openai_client()
+    
     tool_schemas = {
         "create_calendar_event": {
             "required": ["title", "start", "end"],
@@ -150,9 +148,17 @@ def main(syllabus_pdfs: tuple[str, ...], verbose: bool, list_tools: bool) -> Non
 
     SYLLABUS_PDFS: Paths to syllabus PDF files or directories containing PDFs.
     """
+    asyncio.run(async_main(syllabus_pdfs, verbose, list_tools))
+
+
+async def async_main(syllabus_pdfs: tuple[str, ...], verbose: bool, list_tools: bool) -> None:
+    """Orchestrator to parse syllabi and create calendar events and reminders.
+
+    SYLLABUS_PDFS: Paths to syllabus PDF files.
+    """
     # If list option is specified, display tool schemas and exit
     if list_tools:
-        schemas = asyncio.run(list_tool_schemas())
+        schemas = await list_available_tools()
         console.print(JSON(json.dumps(schemas, indent=2)))
         return
     
@@ -184,7 +190,7 @@ def main(syllabus_pdfs: tuple[str, ...], verbose: bool, list_tools: bool) -> Non
         
         for pdf_path in pdf_files:
             progress.update(parse_task, description=f"Parsing {os.path.basename(pdf_path)}...")
-            parsed = parse_syllabus(pdf_path)
+            parsed = await parse_syllabus_async(pdf_path)
             
             if verbose:
                 display_verbose_json(f"Parsed Syllabus: {os.path.basename(pdf_path)}", parsed)
@@ -218,7 +224,7 @@ def main(syllabus_pdfs: tuple[str, ...], verbose: bool, list_tools: bool) -> Non
         
         for event in plan.events:
             progress.update(create_task, description=f"Creating event: {event.title}")
-            resp = create_calendar_event(
+            resp = await create_calendar_event_async(
                 title=event.title,
                 start=event.start,
                 end=event.end,
@@ -232,7 +238,7 @@ def main(syllabus_pdfs: tuple[str, ...], verbose: bool, list_tools: bool) -> Non
 
         for reminder in plan.reminders:
             progress.update(create_task, description=f"Creating reminder: {reminder.title}")
-            resp = create_reminder(
+            resp = await create_reminder_async(
                 title=reminder.title,
                 due=reminder.due,
                 notes=reminder.notes,
@@ -247,8 +253,8 @@ def main(syllabus_pdfs: tuple[str, ...], verbose: bool, list_tools: bool) -> Non
     console.print("\n[bold green]✅ Processing complete![/bold green]")
     
     # Display summary
-    calendar_events = get_calendar_events()
-    reminders = get_reminders()
+    calendar_events = await get_calendar_events_async()
+    reminders = await get_reminders_async()
     
     # Statistics panel
     stats_text = Text()
