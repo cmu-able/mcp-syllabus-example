@@ -20,6 +20,7 @@ from rich.table import Table
 from prompts import load_prompt
 from registry import list_tool_schemas
 from orchestrator.models import ExecutionPlan, ExecutionStep
+from orchestrator.utils import expand_pdf_paths
 
 
 # Initialize console for output
@@ -212,13 +213,16 @@ async def async_main(
     """Run the orchestrator to process PDFs and execute plan.
     
     Args:
-        syllabus_pdfs: Tuple of PDF file paths to process
+        syllabus_pdfs: Tuple of PDF file paths or directories to process
         dry_run: If True, show plan but don't execute
         model: OpenAI model to use for planning
         verbose: If True, show full details; if False, show minimal output
         prompt: Optional custom goal prompt. If not provided, prompts user for input
     """
 
+    # Expand directories to PDF files
+    pdf_files = expand_pdf_paths(syllabus_pdfs)
+    
     # Get user goal from prompt option or interactive input
     if prompt:
         user_goal = prompt
@@ -231,7 +235,7 @@ async def async_main(
             raise SystemExit(1)
     
     # Build context about the PDFs (without dictating the goal)
-    pdf_list = ", ".join(syllabus_pdfs)
+    pdf_list = ", ".join(pdf_files)
     goal_description = f"Process the following syllabus PDFs: {pdf_list}"
 
     # Display header (only in verbose mode)
@@ -239,7 +243,7 @@ async def async_main(
         console.print(
             Panel.fit(
                 f"[bold blue]🤖 Agent-Based Dynamic Orchestrator[/bold blue]\n"
-                f"Processing [bold]{len(syllabus_pdfs)}[/bold] syllabus PDF(s)\n"
+                f"Processing [bold]{len(pdf_files)}[/bold] syllabus PDF(s)\n"
                 f"Model: [cyan]{model}[/cyan]",
                 border_style="blue",
             )
@@ -385,7 +389,7 @@ if __name__ == "__main__":
     @click.argument(
         "pdfs",
         nargs=-1,
-        type=click.Path(exists=True, dir_okay=False),
+        type=click.Path(exists=True),
         required=True,
     )
     @click.option(
@@ -419,7 +423,7 @@ if __name__ == "__main__":
     ) -> None:
         """Run the orchestrator to process syllabus PDFs.
         
-        PDFS: Paths to syllabus PDF files to process.
+        PDFS: Paths to syllabus PDF files or directories containing PDFs to process.
         
         Examples:
             # Process PDFs with minimal output (interactive prompt)

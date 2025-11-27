@@ -17,6 +17,7 @@ from rich.text import Text
 from rich.tree import Tree
 from prompts import load_prompt
 from registry import list_tool_schemas
+from orchestrator.utils import expand_pdf_paths
 
 from syllabus_server.server import parse_syllabus
 from productivity_server.server import (
@@ -140,14 +141,14 @@ def build_plan(parsed_syllabi: list[dict]) -> Plan:
 @click.argument(
     "syllabus_pdfs",
     nargs=-1,
-    type=click.Path(exists=True, dir_okay=False),
+    type=click.Path(exists=True),
 )
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose output.")
 @click.option("--list", "list_tools", is_flag=True, help="List all tool schemas without running the orchestrator.")
 def main(syllabus_pdfs: tuple[str, ...], verbose: bool, list_tools: bool) -> None:
     """Orchestrator to parse syllabi and create calendar events and reminders.
 
-    SYLLABUS_PDFS: Paths to syllabus PDF files.
+    SYLLABUS_PDFS: Paths to syllabus PDF files or directories containing PDFs.
     """
     # If list option is specified, display tool schemas and exit
     if list_tools:
@@ -156,14 +157,17 @@ def main(syllabus_pdfs: tuple[str, ...], verbose: bool, list_tools: bool) -> Non
         return
     
     if not syllabus_pdfs:
-        console.print("[red]Error:[/red] Provide one or more syllabus PDF files.", file=sys.stderr)
+        console.print("[red]Error:[/red] Provide one or more syllabus PDF files or directories.", file=sys.stderr)
         raise SystemExit(1)
-
+    
+    # Expand directories to PDF files
+    pdf_files = expand_pdf_paths(syllabus_pdfs)
+    
     # Header
     console.print(
         Panel.fit(
             f"[bold blue]📚 Syllabus MCP Orchestrator[/bold blue]\n"
-            f"Processing [bold]{len(syllabus_pdfs)}[/bold] syllabus PDFs",
+            f"Processing [bold]{len(pdf_files)}[/bold] syllabus PDFs",
             border_style="blue"
         )
     )
@@ -176,9 +180,9 @@ def main(syllabus_pdfs: tuple[str, ...], verbose: bool, list_tools: bool) -> Non
         console=console,
         transient=True
     ) as progress:
-        parse_task = progress.add_task("Parsing syllabi...", total=len(syllabus_pdfs))
+        parse_task = progress.add_task("Parsing syllabi...", total=len(pdf_files))
         
-        for pdf_path in syllabus_pdfs:
+        for pdf_path in pdf_files:
             progress.update(parse_task, description=f"Parsing {os.path.basename(pdf_path)}...")
             parsed = parse_syllabus(pdf_path)
             
