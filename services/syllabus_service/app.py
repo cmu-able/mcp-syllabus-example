@@ -20,6 +20,7 @@ from services.shared.models import (
     ParseSyllabusRequest,
     AnswerQuestionRequest,
     AnswerQuestionResponse,
+    AnswerQuestionAboutSyllabiRequest,
     Assignment as PydanticAssignment,
     CourseSection as PydanticCourseSection,
     ExplicitMeeting as PydanticExplicitMeeting,
@@ -27,7 +28,7 @@ from services.shared.models import (
     Policies as PydanticPolicies,
     ScheduleEntry as PydanticScheduleEntry,
 )
-from syllabus_server.pdf_utils import extract_pdf_pages
+from syllabus_server.pdf_utils import extract_pdf_pages, extract_pdf_pages_from_content
 from prompts import load_prompt
 
 
@@ -79,7 +80,10 @@ async def parse_syllabus(request: ParseSyllabusRequest) -> PydanticParsedSyllabu
     """
     try:
         # Extract PDF content
-        pages = extract_pdf_pages(request.pdf_path_or_url)
+        if request.pdf_content:
+            pages = extract_pdf_pages_from_content(request.pdf_content)
+        else:
+            pages = extract_pdf_pages(request.pdf_path_or_url)
         
         # Join all pages for global parsing
         full_text = "\\n\\n".join(pages)
@@ -169,6 +173,49 @@ async def answer_question(request: AnswerQuestionRequest) -> AnswerQuestionRespo
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error answering question: {str(e)}")
+
+
+@app.post("/answer-question-about-syllabi", response_model=AnswerQuestionResponse)
+async def answer_question_about_syllabi(request: AnswerQuestionAboutSyllabiRequest) -> AnswerQuestionResponse:
+    """
+    Answer a question about multiple parsed syllabi using an LLM.
+    
+    This endpoint handles questions that involve comparison, consolidation, or analysis
+    across multiple courses.
+    """
+    try:
+        # Convert Pydantic syllabi to JSON for the LLM
+        syllabi_json = [syllabus.model_dump() for syllabus in request.syllabi_data]
+        
+        system_prompt = (
+            "You are a helpful assistant that answers questions about multiple academic syllabi. "
+            "You will be given structured data for multiple courses in JSON format and a question. "
+            "Provide clear, well-organized answers that may involve comparing, consolidating, or "
+            "analyzing information across the courses. "
+            "When appropriate, organize your response by course. "
+            "If the information isn't in the data, say so."
+        )
+        
+        user_message = {
+            "syllabi": syllabi_json,
+            "question": request.question,
+        }
+        
+        # Call OpenAI API
+        completion = client.chat.completions.create(
+            model="gpt-5",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": json.dumps(user_message)},
+            ],
+        )
+        
+        answer = completion.choices[0].message.content or "Unable to generate answer."
+        
+        return AnswerQuestionResponse(answer=answer)
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error answering question about syllabi: {str(e)}")
 
 
 def _convert_to_pydantic_syllabus(data: dict[str, t.Any]) -> PydanticParsedSyllabus:

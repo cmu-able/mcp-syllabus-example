@@ -9,9 +9,12 @@ long-running LLM operations.
 from __future__ import annotations
 
 import os
+import base64
 from dataclasses import asdict
+from pathlib import Path
 
 import httpx
+import requests
 from fastmcp import FastMCP
 
 # Import original dataclass models for MCP interface compatibility
@@ -22,6 +25,7 @@ from services.shared.models import (
     ParseSyllabusRequest,
     AnswerQuestionRequest,
     AnswerQuestionResponse,
+    AnswerQuestionAboutSyllabiRequest,
 )
 
 
@@ -31,8 +35,8 @@ mcp = FastMCP("SyllabusMCPWrapper")
 SYLLABUS_SERVICE_URL = os.getenv("SYLLABUS_SERVICE_URL", "http://localhost:8001")
 
 # Timeout settings for LLM operations (in seconds)
-PARSE_TIMEOUT = 300.0  # 5 minutes for syllabus parsing
-QUESTION_TIMEOUT = 120.0  # 2 minutes for question answering
+PARSE_TIMEOUT = 600.0  # 10 minutes for syllabus parsing
+QUESTION_TIMEOUT = 300.0  # 5 minutes for question answering
 
 
 def _parse_syllabus(pdf_path_or_url: str) -> ParsedSyllabus:
@@ -43,8 +47,19 @@ def _parse_syllabus(pdf_path_or_url: str) -> ParsedSyllabus:
     but makes an HTTP call to the distributed syllabus service.
     """
     try:
-        # Prepare request
-        request = ParseSyllabusRequest(pdf_path_or_url=pdf_path_or_url)
+        # Determine if this is a URL or local file path
+        if pdf_path_or_url.startswith('http://') or pdf_path_or_url.startswith('https://'):
+            # For URLs, let the service handle the download
+            request = ParseSyllabusRequest(pdf_path_or_url=pdf_path_or_url)
+        else:
+            # For local files, read the content and send it
+            pdf_path = Path(pdf_path_or_url)
+            if not pdf_path.exists():
+                raise FileNotFoundError(f"PDF file not found: {pdf_path_or_url}")
+            
+            pdf_content = pdf_path.read_bytes()
+            pdf_content_base64 = base64.b64encode(pdf_content).decode('utf-8')
+            request = ParseSyllabusRequest(pdf_content_base64=pdf_content_base64)
         
         # Make HTTP call with extended timeout for LLM processing
         with httpx.Client(timeout=PARSE_TIMEOUT) as client:
@@ -100,6 +115,55 @@ def _answer_syllabus_question(
         with httpx.Client(timeout=QUESTION_TIMEOUT) as client:
             response = client.post(
                 f"{SYLLABUS_SERVICE_URL}/answer-question",
+                json=request.model_dump(),
+            )
+            response.raise_for_status()
+            
+        # Extract answer from response
+        result = AnswerQuestionResponse(**response.json())
+        return result.answer
+        
+    except httpx.TimeoutException:
+        raise RuntimeError(f"Question answering timed out after {QUESTION_TIMEOUT} seconds")
+    except httpx.HTTPStatusError as e:
+        raise RuntimeError(f"HTTP error from syllabus service: {e.response.status_code} {e.response.text}")
+    except Exception as e:
+        raise RuntimeError(f"Error calling syllabus service: {str(e)}")
+
+
+def _answer_question_about_syllabi(
+    syllabi_data: list[ParsedSyllabus],
+    question: str,
+) -> str:
+    """Answer a question about multiple parsed syllabi using an LLM.
+    
+    This tool takes multiple structured syllabus data and answers questions that
+    may involve comparison, consolidation, or analysis across courses. Examples:
+    - "Consolidate all the course policies"
+    - "Which course has the strictest late policy?"
+    - "What's the total workload across all courses?"
+    - "Compare the exam schedules"
+    - "List all assignment due dates across courses"
+    
+    Args:
+        syllabi_data: List of parsed syllabus data structures
+        question: The natural language question to answer
+        
+    Returns:
+        A natural language answer to the question
+    """
+    try:
+        # Convert dataclasses to Pydantic for HTTP serialization
+        pydantic_syllabi = [_dataclass_to_pydantic_syllabus(s) for s in syllabi_data]
+        request = AnswerQuestionAboutSyllabiRequest(
+            syllabi_data=pydantic_syllabi,
+            question=question,
+        )
+        
+        # Make HTTP call with extended timeout for LLM processing
+        with httpx.Client(timeout=QUESTION_TIMEOUT) as client:
+            response = client.post(
+                f"{SYLLABUS_SERVICE_URL}/answer-question-about-syllabi",
                 json=request.model_dump(),
             )
             response.raise_for_status()
@@ -191,3 +255,12 @@ def answer_syllabus_question(
 ) -> str:
     """Answer a question about a single parsed syllabus using an LLM."""
     return _answer_syllabus_question(syllabus_data, question)
+
+
+@mcp.tool()
+def answer_question_about_syllabi(
+    syllabi_data: list[ParsedSyllabus],
+    question: str,
+) -> str:
+    """Answer a question about multiple parsed syllabi using an LLM."""
+    return _answer_question_about_syllabi(syllabi_data, question)

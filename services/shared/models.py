@@ -7,7 +7,8 @@ the system, ensuring consistent JSON serialization across all services.
 from __future__ import annotations
 
 import typing as t
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+import base64
 
 
 # Type literals for commonly used values
@@ -165,7 +166,24 @@ class Reminder(BaseModel):
 # Request/Response Models for API endpoints
 class ParseSyllabusRequest(BaseModel):
     """Request model for parsing a syllabus."""
-    pdf_path_or_url: str
+    pdf_path_or_url: t.Optional[str] = None
+    pdf_content_base64: t.Optional[str] = None
+    
+    @property
+    def pdf_content(self) -> t.Optional[bytes]:
+        """Decode base64 PDF content to bytes."""
+        if self.pdf_content_base64:
+            return base64.b64decode(self.pdf_content_base64)
+        return None
+    
+    @model_validator(mode='after')
+    def validate_pdf_input(self):
+        """Ensure exactly one of pdf_path_or_url or pdf_content_base64 is provided."""
+        if not self.pdf_path_or_url and not self.pdf_content_base64:
+            raise ValueError("Either pdf_path_or_url or pdf_content_base64 must be provided")
+        if self.pdf_path_or_url and self.pdf_content_base64:
+            raise ValueError("Only one of pdf_path_or_url or pdf_content_base64 should be provided")
+        return self
 
 
 class AnswerQuestionRequest(BaseModel):
@@ -177,6 +195,12 @@ class AnswerQuestionRequest(BaseModel):
 class AnswerQuestionResponse(BaseModel):
     """Response model for syllabus question answers."""
     answer: str
+
+
+class AnswerQuestionAboutSyllabiRequest(BaseModel):
+    """Request model for answering a question about multiple syllabi."""
+    syllabi_data: list[ParsedSyllabus]
+    question: str
 
 
 class CreatePlanRequest(BaseModel):
