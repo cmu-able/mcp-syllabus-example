@@ -41,7 +41,7 @@ graph TB
     end
     
     subgraph "Service Layer - Docker Containers"
-        SERVICE1["📄 Syllabus Service<br/>FastAPI :8001<br/>• parse_syllabus<br/>• answer_syllabus_question"]
+        SERVICE1["📄 Syllabus Service<br/>FastAPI :8001<br/>• parse_syllabus<br/>• answer_syllabus_question<br/>• answer_questions_syllabi"]
         SERVICE2["🎓 Academic Planner<br/>FastAPI :8002<br/>• create_academic_plan<br/>• show_assignment_summary"]
         SERVICE3["📅 Productivity Service<br/>FastAPI :8003<br/>• Calendar Events CRUD<br/>• Reminders CRUD<br/>• Bulk Operations"]
     end
