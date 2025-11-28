@@ -48,7 +48,7 @@ async def health_check():
     return {"status": "healthy", "service": "mock-syllabus-service", "mode": "test"}
 
 
-@app.post("/parse-syllabus", response_model=PydanticParsedSyllabus)
+@app.post("/syllabus:parse", response_model=PydanticParsedSyllabus)
 async def parse_syllabus(request: ParseSyllabusRequest) -> PydanticParsedSyllabus:
     """
     Mock syllabus parsing - returns realistic test data instantly.
@@ -65,7 +65,7 @@ async def parse_syllabus(request: ParseSyllabusRequest) -> PydanticParsedSyllabu
         raise HTTPException(status_code=500, detail=f"Mock parsing error: {str(e)}")
 
 
-@app.post("/answer-question", response_model=AnswerQuestionResponse)
+@app.post("/syllabus/qa", response_model=AnswerQuestionResponse)
 async def answer_question(request: AnswerQuestionRequest) -> AnswerQuestionResponse:
     """
     Mock question answering - returns a predictable test response.

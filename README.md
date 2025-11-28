@@ -41,8 +41,8 @@ graph TB
     end
     
     subgraph "Service Layer - Docker Containers"
-        SERVICE1["📄 Syllabus Service<br/>FastAPI :8001<br/>• parse_syllabus<br/>• answer_syllabus_question<br/>• answer_questions_syllabi"]
-        SERVICE2["🎓 Academic Planner<br/>FastAPI :8002<br/>• create_academic_plan<br/>• show_assignment_summary"]
+        SERVICE1["📄 Syllabus Service<br/>FastAPI :8001<br/>POST /syllabus:parse<br/>POST /syllabus/qa<br/>POST /syllabi/qa"]
+        SERVICE2["🎓 Academic Planner<br/>FastAPI :8002<br/>POST /academics/plan<br/>POST /academics/assignments"]
         SERVICE3["📅 Productivity Service<br/>FastAPI :8003<br/>• Calendar Events CRUD<br/>• Reminders CRUD<br/>• Bulk Operations"]
     end
     
@@ -71,14 +71,14 @@ graph TB
 
 ### 📄 Syllabus Service (Port 8001)
 **Containerized PDF processing and AI-powered extraction**
-- **Endpoints**: `/parse-syllabus`, `/answer-question`
+- **Endpoints**: `/syllabus:parse`, `/syllabus/qa`, `/syllabi/qa`
 - **Features**: PDF text extraction, GPT-powered parsing, Q&A
 - **Timeouts**: 5min parsing, 2min questions (handles long LLM operations)
 - **Dependencies**: pdfplumber, OpenAI API
 
 ### 🎓 Academic Planner Service (Port 8002)  
 **Multi-course planning and analysis**
-- **Endpoints**: `/create-plan`, `/assignment-summary`
+- **Endpoints**: `/academics/plan`, `/academics/assignments`
 - **Features**: Cross-course analysis, conflict detection, workload balancing
 - **Timeouts**: 5min plan creation, 30sec summaries
 - **AI Integration**: GPT-powered academic planning
@@ -207,7 +207,7 @@ uv run python orchestrator/run_agent.py exec productivity_server.create_reminder
 ### Service Interaction
 ```bash
 # Direct API calls (when services are running)
-curl -X POST "http://localhost:8001/parse-syllabus" \
+curl -X POST "http://localhost:8001/syllabus:parse" \
   -H "Content-Type: application/json" \
   -d '{"pdf_path_or_url": "path/to/syllabus.pdf"}'
 

@@ -42,7 +42,7 @@ def test_direct_http_calls():
         
         with httpx.Client(timeout=30.0) as client:
             response = client.post(
-                f"{base_url}/parse-syllabus",
+                f"{base_url}/syllabus:parse",
                 json=parse_request
             )
             response.raise_for_status()
@@ -65,7 +65,7 @@ def test_direct_http_calls():
         
         with httpx.Client(timeout=30.0) as client:
             response = client.post(
-                f"{base_url}/answer-question",
+                f"{base_url}/syllabus/qa",
                 json=question_request
             )
             response.raise_for_status()

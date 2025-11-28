@@ -61,12 +61,12 @@ print(get_service_status())
 ## Service Details
 
 ### Syllabus Service (Port 8001)
-- **Endpoints**: `/parse-syllabus`, `/answer-question`, `/health`
+- **Endpoints**: `/syllabus:parse`, `/syllabus/qa`, `/syllabi/qa`, `/health`
 - **Timeouts**: 5 minutes for parsing, 2 minutes for questions
 - **Requirements**: OpenAI API key
 
 ### Academic Planner Service (Port 8002)
-- **Endpoints**: `/create-plan`, `/show-assignment-summary`, `/health`
+- **Endpoints**: `/academics/plan`, `/academics/assignments`, `/health`
 - **Timeouts**: 5 minutes for plan creation
 - **Requirements**: OpenAI API key
 
@@ -86,12 +86,12 @@ print(get_service_status())
 
 ```bash
 # Parse a syllabus
-curl -X POST http://localhost:8001/parse-syllabus \
+curl -X POST http://localhost:8001/syllabus:parse \
   -H "Content-Type: application/json" \
   -d '{"pdf_path_or_url": "https://example.com/syllabus.pdf"}'
 
 # Create a calendar event
-curl -X POST http://localhost:8003/create-calendar-event \
+curl -X POST http://localhost:8003/calendar/event \
   -H "Content-Type: application/json" \
   -d '{
     "title": "Study Session",
