@@ -24,17 +24,17 @@ This system demonstrates a **production-ready distributed architecture** that tr
 
 ```mermaid
 graph TB
-    subgraph "Client Layer"
+    subgraph "Orchestration Layer"
         CLI1["orchestrator/run.py<br/>📋 Batch Processing"]
         CLI2["orchestrator/run_agent.py<br/>🤖 AI-Driven Workflow"]
     end
     
-    subgraph "Integration Layer"
+    subgraph "Registry Layer"
         REGISTRY["📚 Registry<br/>Service Discovery"]
         GATEWAY["🚪 MCP Gateway<br/>Unified Tool Interface<br/>14 Available Tools"]
     end
     
-    subgraph "Communication Layer" 
+    subgraph "MCP Tool Layer" 
         WRAPPER1["📄 Syllabus Wrapper<br/>HTTP Client"]
         WRAPPER2["🎓 Academic Wrapper<br/>HTTP Client"]
         WRAPPER3["📅 Productivity Wrapper<br/>HTTP Client"]
@@ -44,11 +44,6 @@ graph TB
         SERVICE1["📄 Syllabus Service<br/>FastAPI :8001<br/>• parse_syllabus<br/>• answer_syllabus_question"]
         SERVICE2["🎓 Academic Planner<br/>FastAPI :8002<br/>• create_academic_plan<br/>• show_assignment_summary"]
         SERVICE3["📅 Productivity Service<br/>FastAPI :8003<br/>• Calendar Events CRUD<br/>• Reminders CRUD<br/>• Bulk Operations"]
-    end
-    
-    subgraph "Infrastructure"
-        DOCKER["🐳 Docker Compose<br/>• Service Orchestration<br/>• Health Checks<br/>• Network Isolation"]
-        HEALTH["💓 Health Monitoring<br/>• /health endpoints<br/>• Service Status"]
     end
     
     CLI1 --> REGISTRY
@@ -61,24 +56,15 @@ graph TB
     WRAPPER2 -->|HTTP POST :8002| SERVICE2
     WRAPPER3 -->|HTTP POST :8003| SERVICE3
     
-    DOCKER -.-> SERVICE1
-    DOCKER -.-> SERVICE2 
-    DOCKER -.-> SERVICE3
-    HEALTH -.-> SERVICE1
-    HEALTH -.-> SERVICE2
-    HEALTH -.-> SERVICE3
-    
-    classDef client fill:#e1f5fe
+    classDef orchestration fill:#e1f5fe
     classDef integration fill:#f3e5f5
     classDef communication fill:#fff3e0
     classDef service fill:#e8f5e8
-    classDef infrastructure fill:#fce4ec
     
-    class CLI1,CLI2 client
+    class CLI1,CLI2 orchestration
     class REGISTRY,GATEWAY integration
     class WRAPPER1,WRAPPER2,WRAPPER3 communication
     class SERVICE1,SERVICE2,SERVICE3 service
-    class DOCKER,HEALTH infrastructure
 ```
 
 ## 🎯 Service Architecture
