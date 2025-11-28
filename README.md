@@ -24,22 +24,24 @@ This system demonstrates a **production-ready distributed architecture** that tr
 
 ```mermaid
 graph TB
-    subgraph "Orchestration Layer"
-        CLI1["orchestrator/run.py<br/>📋 Batch Processing"]
-        CLI2["orchestrator/run_agent.py<br/>🤖 AI-Driven Workflow"]
-    end
+    subgraph "Orchestration CLI"
+        subgraph "Orchestration Layer"
+            CLI1["orchestrator/run.py<br/>📋 Batch Processing"]
+            CLI2["orchestrator/run_agent.py<br/>🤖 AI-Driven Workflow"]
+        end
     
-    subgraph "Registry Layer"
-        REGISTRY["📚 Registry<br/>Service Discovery"]
-        GATEWAY["🚪 MCP Gateway<br/>Unified Tool Interface<br/>14 Available Tools"]
-    end
+        subgraph "Registry Layer"
+            REGISTRY["📚 Registry<br/>Service Discovery"]
+            GATEWAY["🚪 MCP Gateway<br/>Unified Tool Interface<br/>14 Available Tools"]
+        end
     
-    subgraph "MCP Tool Layer" 
-        WRAPPER1["📄 Syllabus Wrapper<br/>HTTP Client"]
-        WRAPPER2["🎓 Academic Wrapper<br/>HTTP Client"]
-        WRAPPER3["📅 Productivity Wrapper<br/>HTTP Client"]
+        subgraph "MCP Tool Layer" 
+            WRAPPER1["📄 Syllabus Wrapper<br/>HTTP Client"]
+            WRAPPER2["🎓 Academic Wrapper<br/>HTTP Client"]
+            WRAPPER3["📅 Productivity Wrapper<br/>HTTP Client"]
+        end
     end
-    
+
     subgraph "Service Layer - Docker Containers"
         SERVICE1["📄 Syllabus Service<br/>FastAPI :8001<br/>POST /syllabus:parse<br/>POST /syllabus/qa<br/>POST /syllabi/qa"]
         SERVICE2["🎓 Academic Planner<br/>FastAPI :8002<br/>POST /academics/plan<br/>POST /academics/assignments"]
