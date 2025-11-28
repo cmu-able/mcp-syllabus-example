@@ -7,8 +7,12 @@ import asyncio
 import os
 import typing as t
 from openai import OpenAI
+from dotenv import load_dotenv
 from registry import list_tool_schemas
 from mcp_gateway.server import mcp as gateway_mcp
+
+# Load environment variables from .env file
+load_dotenv()
 
 
 def get_openai_client() -> OpenAI:
