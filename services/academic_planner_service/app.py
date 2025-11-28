@@ -14,7 +14,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 
 from fastapi import FastAPI, HTTPException
-from openai import OpenAI
+from openai import AsyncOpenAI
 
 from services.shared.models import (
     Plan as PydanticPlan,
@@ -28,8 +28,8 @@ from services.shared.models import (
 from prompts import load_prompt
 
 
-# Global OpenAI client - will be initialized on startup
-client: OpenAI = None
+# Global async OpenAI client - will be initialized on startup
+client: AsyncOpenAI = None
 
 
 @asynccontextmanager
@@ -37,11 +37,11 @@ async def lifespan(app: FastAPI):
     """Initialize resources on startup and cleanup on shutdown."""
     global client
     
-    # Startup: Initialize OpenAI client
+    # Startup: Initialize async OpenAI client
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         raise RuntimeError("OPENAI_API_KEY environment variable is not set.")
-    client = OpenAI(api_key=api_key)
+    client = AsyncOpenAI(api_key=api_key)
     
     yield
     
@@ -67,7 +67,7 @@ async def health_check():
     return {"status": "healthy", "service": "academic-planner-service"}
 
 
-@app.post("/create-plan", response_model=PydanticPlan)
+@app.post("/academics/plan", response_model=PydanticPlan)
 async def create_plan(request: CreatePlanRequest) -> PydanticPlan:
     """
     Create an academic plan from a list of parsed syllabi.
@@ -82,7 +82,7 @@ async def create_plan(request: CreatePlanRequest) -> PydanticPlan:
         ]
         
         # Call OpenAI API - this is the long-running LLM operation
-        completion = client.chat.completions.create(
+        completion = await client.chat.completions.create(
             model="gpt-5",
             response_format={"type": "json_object"},
             messages=[
@@ -106,7 +106,7 @@ async def create_plan(request: CreatePlanRequest) -> PydanticPlan:
         raise HTTPException(status_code=500, detail=f"Error creating academic plan: {str(e)}")
 
 
-@app.post("/show-assignment-summary", response_model=ShowAssignmentSummaryResponse)
+@app.post("/academics/assignments", response_model=ShowAssignmentSummaryResponse)
 async def show_assignment_summary(request: ShowAssignmentSummaryRequest) -> ShowAssignmentSummaryResponse:
     """
     Generate a formatted assignment summary from an academic plan.

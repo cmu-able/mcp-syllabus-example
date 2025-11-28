@@ -52,7 +52,7 @@ async def health_check():
     return {"status": "healthy", "service": "productivity-service"}
 
 
-@app.post("/create-calendar-event", response_model=PydanticCalendarEvent)
+@app.post("/calendar/event", response_model=PydanticCalendarEvent)
 async def create_calendar_event(request: CreateCalendarEventRequest) -> PydanticCalendarEvent:
     """
     Create a single calendar event.
@@ -73,7 +73,7 @@ async def create_calendar_event(request: CreateCalendarEventRequest) -> Pydantic
         raise HTTPException(status_code=500, detail=f"Error creating calendar event: {str(e)}")
 
 
-@app.post("/create-reminder", response_model=PydanticReminder)
+@app.post("/reminders/reminder", response_model=PydanticReminder)
 async def create_reminder(request: CreateReminderRequest) -> PydanticReminder:
     """
     Create a single reminder.
@@ -93,7 +93,7 @@ async def create_reminder(request: CreateReminderRequest) -> PydanticReminder:
         raise HTTPException(status_code=500, detail=f"Error creating reminder: {str(e)}")
 
 
-@app.post("/create-calendar-events-bulk", response_model=list[PydanticCalendarEvent])
+@app.post("/calendar/events", response_model=list[PydanticCalendarEvent])
 async def create_calendar_events_bulk(request: CreateCalendarEventsBulkRequest) -> list[PydanticCalendarEvent]:
     """
     Create multiple calendar events at once.
@@ -111,7 +111,7 @@ async def create_calendar_events_bulk(request: CreateCalendarEventsBulkRequest) 
         raise HTTPException(status_code=500, detail=f"Error creating calendar events in bulk: {str(e)}")
 
 
-@app.post("/create-reminders-bulk", response_model=list[PydanticReminder])
+@app.post("/reminders", response_model=list[PydanticReminder])
 async def create_reminders_bulk(request: CreateRemindersBulkRequest) -> list[PydanticReminder]:
     """
     Create multiple reminders at once.
@@ -129,7 +129,7 @@ async def create_reminders_bulk(request: CreateRemindersBulkRequest) -> list[Pyd
         raise HTTPException(status_code=500, detail=f"Error creating reminders in bulk: {str(e)}")
 
 
-@app.get("/list-calendar-events", response_model=list[PydanticCalendarEvent])
+@app.get("/calendar/events", response_model=list[PydanticCalendarEvent])
 async def list_calendar_events() -> list[PydanticCalendarEvent]:
     """
     List all calendar events.
@@ -139,7 +139,7 @@ async def list_calendar_events() -> list[PydanticCalendarEvent]:
     return calendar_events
 
 
-@app.get("/list-reminders", response_model=list[PydanticReminder])
+@app.get("/reminders", response_model=list[PydanticReminder])
 async def list_reminders() -> list[PydanticReminder]:
     """
     List all reminders.
@@ -149,7 +149,7 @@ async def list_reminders() -> list[PydanticReminder]:
     return reminders
 
 
-@app.get("/show-calendar-events", response_model=ShowCalendarEventsResponse)
+@app.get("/calendar/events:str", response_model=ShowCalendarEventsResponse)
 async def show_calendar_events() -> ShowCalendarEventsResponse:
     """
     Show all calendar events in a formatted display.
@@ -164,7 +164,7 @@ async def show_calendar_events() -> ShowCalendarEventsResponse:
         raise HTTPException(status_code=500, detail=f"Error formatting calendar events: {str(e)}")
 
 
-@app.get("/show-reminders", response_model=ShowRemindersResponse)
+@app.get("/reminders:str", response_model=ShowRemindersResponse)
 async def show_reminders() -> ShowRemindersResponse:
     """
     Show all reminders in a formatted display.

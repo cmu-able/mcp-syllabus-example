@@ -13,7 +13,7 @@ import typing as t
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
-from openai import OpenAI
+from openai import AsyncOpenAI
 
 from services.shared.models import (
     ParsedSyllabus as PydanticParsedSyllabus,
@@ -32,8 +32,8 @@ from syllabus_server.pdf_utils import extract_pdf_pages, extract_pdf_pages_from_
 from prompts import load_prompt
 
 
-# Global OpenAI client - will be initialized on startup
-client: OpenAI = None
+# Global async OpenAI client - will be initialized on startup
+client: AsyncOpenAI = None
 
 
 @asynccontextmanager
@@ -41,11 +41,11 @@ async def lifespan(app: FastAPI):
     """Initialize resources on startup and cleanup on shutdown."""
     global client
     
-    # Startup: Initialize OpenAI client
+    # Startup: Initialize async OpenAI client for parallel request handling
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         raise RuntimeError("OPENAI_API_KEY environment variable is not set.")
-    client = OpenAI(api_key=api_key)
+    client = AsyncOpenAI(api_key=api_key)
     
     yield
     
@@ -71,7 +71,7 @@ async def health_check():
     return {"status": "healthy", "service": "syllabus-service"}
 
 
-@app.post("/parse-syllabus", response_model=PydanticParsedSyllabus)
+@app.post("/syllabus:parse", response_model=PydanticParsedSyllabus)
 async def parse_syllabus(request: ParseSyllabusRequest) -> PydanticParsedSyllabus:
     """
     Parse a syllabus PDF/URL into structured data.
@@ -111,7 +111,8 @@ async def parse_syllabus(request: ParseSyllabusRequest) -> PydanticParsedSyllabu
         }
         
         # Call OpenAI API - this is the long-running LLM operation
-        completion = client.chat.completions.create(
+        # Using async client allows multiple requests to be processed concurrently
+        completion = await client.chat.completions.create(
             model="gpt-5",
             response_format={"type": "json_object"},
             messages=[
@@ -135,7 +136,7 @@ async def parse_syllabus(request: ParseSyllabusRequest) -> PydanticParsedSyllabu
         raise HTTPException(status_code=500, detail=f"Error parsing syllabus: {str(e)}")
 
 
-@app.post("/answer-question", response_model=AnswerQuestionResponse)
+@app.post("/syllabus/qa", response_model=AnswerQuestionResponse)
 async def answer_question(request: AnswerQuestionRequest) -> AnswerQuestionResponse:
     """
     Answer a question about a parsed syllabus using an LLM.
@@ -159,7 +160,7 @@ async def answer_question(request: AnswerQuestionRequest) -> AnswerQuestionRespo
         }
         
         # Call OpenAI API
-        completion = client.chat.completions.create(
+        completion = await client.chat.completions.create(
             model="gpt-5",
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -175,7 +176,7 @@ async def answer_question(request: AnswerQuestionRequest) -> AnswerQuestionRespo
         raise HTTPException(status_code=500, detail=f"Error answering question: {str(e)}")
 
 
-@app.post("/answer-question-about-syllabi", response_model=AnswerQuestionResponse)
+@app.post("/syllabi/qa", response_model=AnswerQuestionResponse)
 async def answer_question_about_syllabi(request: AnswerQuestionAboutSyllabiRequest) -> AnswerQuestionResponse:
     """
     Answer a question about multiple parsed syllabi using an LLM.
@@ -202,7 +203,7 @@ async def answer_question_about_syllabi(request: AnswerQuestionAboutSyllabiReque
         }
         
         # Call OpenAI API
-        completion = client.chat.completions.create(
+        completion = await client.chat.completions.create(
             model="gpt-5",
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -216,6 +217,49 @@ async def answer_question_about_syllabi(request: AnswerQuestionAboutSyllabiReque
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error answering question about syllabi: {str(e)}")
+
+
+def _normalize_assignment_category(category: str) -> str:
+    """
+    Normalize assignment category to one of the allowed values.
+    
+    Maps common variations and invalid values to the standardized category literals.
+    Defaults to 'other' if the category doesn't match any known type.
+    
+    Args:
+        category: The raw category string from the LLM
+        
+    Returns:
+        A valid AssignmentCategory literal value
+    """
+    if not category:
+        return "other"
+    
+    category_lower = category.lower().strip()
+    
+    # Direct matches
+    valid_categories = {
+        "exam", "project", "homework", "quiz", 
+        "participation", "presentation", "other"
+    }
+    if category_lower in valid_categories:
+        return category_lower
+    
+    # Common variations and synonyms
+    if "exam" in category_lower or "midterm" in category_lower or "final" in category_lower:
+        return "exam"
+    elif "project" in category_lower or "report" in category_lower:
+        return "project"
+    elif "homework" in category_lower or "hw" in category_lower or "assignment" in category_lower:
+        return "homework"
+    elif "quiz" in category_lower or "test" in category_lower:
+        return "quiz"
+    elif "participation" in category_lower or "attendance" in category_lower:
+        return "participation"
+    elif "presentation" in category_lower or "present" in category_lower:
+        return "presentation"
+    else:
+        return "other"
 
 
 def _convert_to_pydantic_syllabus(data: dict[str, t.Any]) -> PydanticParsedSyllabus:
@@ -245,12 +289,16 @@ def _convert_to_pydantic_syllabus(data: dict[str, t.Any]) -> PydanticParsedSylla
     # Assignments
     assignments: list[PydanticAssignment] = []
     for a in data.get("assignments", []) or []:
+        # Normalize category to ensure it matches one of the allowed literal values
+        raw_category = a.get("category", "other") or "other"
+        normalized_category = _normalize_assignment_category(raw_category)
+        
         assignments.append(
             PydanticAssignment(
                 title=a.get("title", "") or "",
                 due=a.get("due", "") or "",
                 weight_percent=float(a.get("weight_percent", 0.0) or 0.0),
-                category=a.get("category", "other") or "other",
+                category=normalized_category,
                 is_in_class=bool(a.get("is_in_class", False)),
                 notes=a.get("notes", "") or "",
             )
