@@ -7,8 +7,11 @@ WORKDIR /app
 # Install uv for fast Python package management
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-# Copy pyproject.toml and uv.lock first for better caching
-COPY pyproject.toml uv.lock* ./
+# Copy pyproject.toml, uv.lock, and README.md first for better caching
+COPY pyproject.toml uv.lock* README.md ./
+
+# Install system dependencies including curl for health checks
+RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
 
 # Install dependencies
 RUN uv sync --frozen --no-dev

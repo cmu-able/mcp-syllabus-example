@@ -32,9 +32,12 @@ ehthumbs.db
 Thumbs.db
 
 # Documentation and markdown (except README)
-*.md
-!README.md
+# NOTE: README.md is required for package build, so don't exclude it
 docs/
+# Exclude other markdown files but keep README.md
+WARP.md
+CHANGELOG.md
+CONTRIBUTING.md
 
 # Test files and coverage
 tests/
