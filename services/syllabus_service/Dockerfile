@@ -30,5 +30,6 @@ EXPOSE 8001
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8001/health || exit 1
 
-# Run the application
-CMD ["uv", "run", "python", "services/syllabus_service/app.py"]
+# Run the application with multiple workers to handle parallel requests
+# 4 workers allow processing 4 PDFs in parallel without queuing
+CMD ["uv", "run", "uvicorn", "services.syllabus_service.app:app", "--host", "0.0.0.0", "--port", "8001", "--workers", "4"]
