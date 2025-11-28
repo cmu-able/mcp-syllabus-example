@@ -11,7 +11,7 @@ from __future__ import annotations
 import os
 from dataclasses import asdict
 
-import httpx
+import requests
 from fastmcp import FastMCP
 
 # Import original dataclass models for MCP interface compatibility
@@ -36,7 +36,7 @@ mcp = FastMCP("AcademicPlannerMCPWrapper")
 ACADEMIC_PLANNER_SERVICE_URL = os.getenv("ACADEMIC_PLANNER_SERVICE_URL", "http://localhost:8002")
 
 # Timeout settings for LLM operations (in seconds)
-CREATE_PLAN_TIMEOUT = 300.0  # 5 minutes for academic plan creation with multiple syllabi
+CREATE_PLAN_TIMEOUT = 600.0  # 10 minutes for academic plan creation with multiple syllabi
 SUMMARY_TIMEOUT = 30.0  # 30 seconds for assignment summary formatting
 
 
@@ -57,12 +57,12 @@ def _create_academic_plan(syllabi: list[ParsedSyllabus]) -> Plan:
         request = CreatePlanRequest(syllabi=pydantic_syllabi)
         
         # Make HTTP call with extended timeout for LLM processing
-        with httpx.Client(timeout=CREATE_PLAN_TIMEOUT) as client:
-            response = client.post(
-                f"{ACADEMIC_PLANNER_SERVICE_URL}/create-plan",
-                json=request.model_dump(),
-            )
-            response.raise_for_status()
+        response = requests.post(
+            f"{ACADEMIC_PLANNER_SERVICE_URL}/academics/plan",
+            json=request.model_dump(),
+            timeout=CREATE_PLAN_TIMEOUT,
+        )
+        response.raise_for_status()
             
         # Convert response back to original dataclass format
         pydantic_result = PydanticPlan(**response.json())
@@ -70,9 +70,9 @@ def _create_academic_plan(syllabi: list[ParsedSyllabus]) -> Plan:
         
         return dataclass_result
         
-    except httpx.TimeoutException:
+    except requests.Timeout:
         raise RuntimeError(f"Academic plan creation timed out after {CREATE_PLAN_TIMEOUT} seconds")
-    except httpx.HTTPStatusError as e:
+    except requests.HTTPError as e:
         raise RuntimeError(f"HTTP error from academic planner service: {e.response.status_code} {e.response.text}")
     except Exception as e:
         raise RuntimeError(f"Error calling academic planner service: {str(e)}")
@@ -96,20 +96,20 @@ def _show_assignment_summary(plan: Plan) -> str:
         request = ShowAssignmentSummaryRequest(plan=pydantic_plan)
         
         # Make HTTP call with normal timeout (this is a fast formatting operation)
-        with httpx.Client(timeout=SUMMARY_TIMEOUT) as client:
-            response = client.post(
-                f"{ACADEMIC_PLANNER_SERVICE_URL}/show-assignment-summary",
-                json=request.model_dump(),
-            )
-            response.raise_for_status()
+        response = requests.post(
+            f"{ACADEMIC_PLANNER_SERVICE_URL}/academics/assignments",
+            json=request.model_dump(),
+            timeout=SUMMARY_TIMEOUT,
+        )
+        response.raise_for_status()
             
         # Extract summary from response
         result = ShowAssignmentSummaryResponse(**response.json())
         return result.summary
         
-    except httpx.TimeoutException:
+    except requests.Timeout:
         raise RuntimeError(f"Assignment summary generation timed out after {SUMMARY_TIMEOUT} seconds")
-    except httpx.HTTPStatusError as e:
+    except requests.HTTPError as e:
         raise RuntimeError(f"HTTP error from academic planner service: {e.response.status_code} {e.response.text}")
     except Exception as e:
         raise RuntimeError(f"Error calling academic planner service: {str(e)}")

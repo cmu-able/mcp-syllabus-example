@@ -13,7 +13,6 @@ import base64
 from dataclasses import asdict
 from pathlib import Path
 
-import httpx
 import requests
 from fastmcp import FastMCP
 
@@ -62,12 +61,13 @@ def _parse_syllabus(pdf_path_or_url: str) -> ParsedSyllabus:
             request = ParseSyllabusRequest(pdf_content_base64=pdf_content_base64)
         
         # Make HTTP call with extended timeout for LLM processing
-        with httpx.Client(timeout=PARSE_TIMEOUT) as client:
-            response = client.post(
-                f"{SYLLABUS_SERVICE_URL}/parse-syllabus",
-                json=request.model_dump(),
-            )
-            response.raise_for_status()
+        # Using requests library instead of httpx for better compatibility with asyncio.to_thread()
+        response = requests.post(
+            f"{SYLLABUS_SERVICE_URL}/syllabus:parse",
+            json=request.model_dump(),
+            timeout=PARSE_TIMEOUT,
+        )
+        response.raise_for_status()
             
         # Convert response back to original dataclass format
         pydantic_result = PydanticParsedSyllabus(**response.json())
@@ -75,9 +75,9 @@ def _parse_syllabus(pdf_path_or_url: str) -> ParsedSyllabus:
         
         return dataclass_result
         
-    except httpx.TimeoutException:
+    except requests.Timeout:
         raise RuntimeError(f"Syllabus parsing timed out after {PARSE_TIMEOUT} seconds")
-    except httpx.HTTPStatusError as e:
+    except requests.HTTPError as e:
         raise RuntimeError(f"HTTP error from syllabus service: {e.response.status_code} {e.response.text}")
     except Exception as e:
         raise RuntimeError(f"Error calling syllabus service: {str(e)}")
@@ -112,20 +112,20 @@ def _answer_syllabus_question(
         )
         
         # Make HTTP call with extended timeout for LLM processing
-        with httpx.Client(timeout=QUESTION_TIMEOUT) as client:
-            response = client.post(
-                f"{SYLLABUS_SERVICE_URL}/answer-question",
-                json=request.model_dump(),
-            )
-            response.raise_for_status()
+        response = requests.post(
+            f"{SYLLABUS_SERVICE_URL}/syllabus/qa",
+            json=request.model_dump(),
+            timeout=QUESTION_TIMEOUT,
+        )
+        response.raise_for_status()
             
         # Extract answer from response
         result = AnswerQuestionResponse(**response.json())
         return result.answer
         
-    except httpx.TimeoutException:
+    except requests.Timeout:
         raise RuntimeError(f"Question answering timed out after {QUESTION_TIMEOUT} seconds")
-    except httpx.HTTPStatusError as e:
+    except requests.HTTPError as e:
         raise RuntimeError(f"HTTP error from syllabus service: {e.response.status_code} {e.response.text}")
     except Exception as e:
         raise RuntimeError(f"Error calling syllabus service: {str(e)}")
@@ -161,20 +161,20 @@ def _answer_question_about_syllabi(
         )
         
         # Make HTTP call with extended timeout for LLM processing
-        with httpx.Client(timeout=QUESTION_TIMEOUT) as client:
-            response = client.post(
-                f"{SYLLABUS_SERVICE_URL}/answer-question-about-syllabi",
-                json=request.model_dump(),
-            )
-            response.raise_for_status()
+        response = requests.post(
+            f"{SYLLABUS_SERVICE_URL}/syllabi/qa",
+            json=request.model_dump(),
+            timeout=QUESTION_TIMEOUT,
+        )
+        response.raise_for_status()
             
         # Extract answer from response
         result = AnswerQuestionResponse(**response.json())
         return result.answer
         
-    except httpx.TimeoutException:
+    except requests.Timeout:
         raise RuntimeError(f"Question answering timed out after {QUESTION_TIMEOUT} seconds")
-    except httpx.HTTPStatusError as e:
+    except requests.HTTPError as e:
         raise RuntimeError(f"HTTP error from syllabus service: {e.response.status_code} {e.response.text}")
     except Exception as e:
         raise RuntimeError(f"Error calling syllabus service: {str(e)}")

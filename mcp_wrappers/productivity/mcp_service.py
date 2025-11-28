@@ -60,7 +60,7 @@ def _create_calendar_event(
         # Make HTTP call with standard timeout
         with httpx.Client(timeout=STANDARD_TIMEOUT) as client:
             response = client.post(
-                f"{PRODUCTIVITY_SERVICE_URL}/create-calendar-event",
+                f"{PRODUCTIVITY_SERVICE_URL}/calendar/event",
                 json=request.model_dump(),
             )
             response.raise_for_status()
@@ -100,7 +100,7 @@ def _create_reminder(
         # Make HTTP call with standard timeout
         with httpx.Client(timeout=STANDARD_TIMEOUT) as client:
             response = client.post(
-                f"{PRODUCTIVITY_SERVICE_URL}/create-reminder",
+                f"{PRODUCTIVITY_SERVICE_URL}/reminders/reminder",
                 json=request.model_dump(),
             )
             response.raise_for_status()
@@ -138,7 +138,7 @@ def _create_calendar_events_bulk(events: list[CalendarEvent]) -> list[CalendarEv
         # Make HTTP call with standard timeout
         with httpx.Client(timeout=STANDARD_TIMEOUT) as client:
             response = client.post(
-                f"{PRODUCTIVITY_SERVICE_URL}/create-calendar-events-bulk",
+                f"{PRODUCTIVITY_SERVICE_URL}/calendar/events",
                 json=request.model_dump(),
             )
             response.raise_for_status()
@@ -180,7 +180,7 @@ def _create_reminders_bulk(reminders_list: list[Reminder]) -> list[Reminder]:
         # Make HTTP call with standard timeout
         with httpx.Client(timeout=STANDARD_TIMEOUT) as client:
             response = client.post(
-                f"{PRODUCTIVITY_SERVICE_URL}/create-reminders-bulk",
+                f"{PRODUCTIVITY_SERVICE_URL}/reminders",
                 json=request.model_dump(),
             )
             response.raise_for_status()
@@ -213,7 +213,7 @@ def _list_calendar_events() -> list[CalendarEvent]:
     try:
         # Make HTTP call with standard timeout
         with httpx.Client(timeout=STANDARD_TIMEOUT) as client:
-            response = client.get(f"{PRODUCTIVITY_SERVICE_URL}/list-calendar-events")
+            response = client.get(f"{PRODUCTIVITY_SERVICE_URL}/calendar/events")
             response.raise_for_status()
             
         # Convert response back to original dataclass format
@@ -244,7 +244,7 @@ def _list_reminders() -> list[Reminder]:
     try:
         # Make HTTP call with standard timeout
         with httpx.Client(timeout=STANDARD_TIMEOUT) as client:
-            response = client.get(f"{PRODUCTIVITY_SERVICE_URL}/list-reminders")
+            response = client.get(f"{PRODUCTIVITY_SERVICE_URL}/reminders")
             response.raise_for_status()
             
         # Convert response back to original dataclass format
@@ -275,7 +275,7 @@ def _show_calendar_events() -> str:
     try:
         # Make HTTP call with standard timeout
         with httpx.Client(timeout=STANDARD_TIMEOUT) as client:
-            response = client.get(f"{PRODUCTIVITY_SERVICE_URL}/show-calendar-events")
+            response = client.get(f"{PRODUCTIVITY_SERVICE_URL}/calendar/events:str")
             response.raise_for_status()
             
         # Extract formatted display from response
@@ -300,7 +300,7 @@ def _show_reminders() -> str:
     try:
         # Make HTTP call with standard timeout
         with httpx.Client(timeout=STANDARD_TIMEOUT) as client:
-            response = client.get(f"{PRODUCTIVITY_SERVICE_URL}/show-reminders")
+            response = client.get(f"{PRODUCTIVITY_SERVICE_URL}/reminders:str")
             response.raise_for_status()
             
         # Extract formatted display from response
