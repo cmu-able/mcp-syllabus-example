@@ -14,7 +14,7 @@ from fastmcp import FastMCP
 # Import the raw functions from each MCP wrapper (not the decorated versions)
 # This allows us to register them with our own unified FastMCP instance
 from mcp_wrappers.syllabus.mcp_service import (
-    _parse_syllabus, _answer_syllabus_question,
+    _parse_syllabus, _answer_syllabus_question, _answer_question_about_syllabi,
     SYLLABUS_SERVICE_URL
 )
 from mcp_wrappers.academic_planner.mcp_service import (
@@ -67,6 +67,12 @@ def parse_syllabus(pdf_path_or_url: str) -> ParsedSyllabus:
 def answer_syllabus_question(syllabus_data: ParsedSyllabus, question: str) -> str:
     """Answer a question about a single parsed syllabus using an LLM."""
     return _answer_syllabus_question(syllabus_data, question)
+
+
+@mcp.tool()
+def answer_question_about_syllabi(syllabi_data: list[ParsedSyllabus], question: str) -> str:
+    """Answer a question about multiple parsed syllabi using an LLM."""
+    return _answer_question_about_syllabi(syllabi_data, question)
 
 
 # Academic Planner Service Tools
@@ -152,7 +158,8 @@ def list_available_tools() -> dict[str, list[str]]:
     return {
         "syllabus_service": [
             "parse_syllabus - Parse a syllabus PDF/URL into structured data",
-            "answer_syllabus_question - Answer questions about parsed syllabus content"
+            "answer_syllabus_question - Answer questions about parsed syllabus content",
+            "answer_question_about_syllabi - Answer questions about multiple syllabi with comparison/consolidation"
         ],
         "academic_planner_service": [
             "create_academic_plan - Create an academic plan from multiple syllabi", 

@@ -21,6 +21,7 @@ async def list_tool_schemas() -> list[dict]:
         # Syllabus server tools
         "parse_syllabus": "syllabus_server",
         "answer_syllabus_question": "syllabus_server",
+        "answer_question_about_syllabi": "syllabus_server",
         # Academic planner tools
         "create_academic_plan": "academic_planner_server",
         "show_assignment_summary": "academic_planner_server",
