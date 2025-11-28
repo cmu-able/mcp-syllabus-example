@@ -523,5 +523,118 @@ if __name__ == "__main__":
         
         asyncio.run(show_tools())
     
+    @cli.command()
+    @click.argument("tool_name", type=str, required=True)
+    @click.option(
+        "--args",
+        "-a",
+        type=str,
+        help="JSON string of arguments to pass to the tool (optional).",
+    )
+    def exec(tool_name: str, args: t.Optional[str]) -> None:
+        """Execute a specific MCP tool directly.
+        
+        TOOL_NAME: Name of the tool to execute in format 'server.tool_name'.
+        
+        Examples:
+            # Execute a tool without arguments
+            python -m orchestrator.run_agent exec productivity_server.show_reminders
+            
+            # Execute a tool with arguments
+            python -m orchestrator.run_agent exec productivity_server.create_reminder --args '{"title": "Test", "due": "2025-12-01T10:00:00"}'
+        """
+        async def execute_tool() -> None:
+            """Async function to execute the specified tool."""
+            # Get available tools
+            available_tools = await list_available_tools()
+            
+            if not available_tools:
+                console.print("[red]No tools available in registry[/red]")
+                raise SystemExit(1)
+            
+            # Parse tool_name in format "server.tool"
+            if "." not in tool_name:
+                console.print(f"[red]Error: Tool name must be in format 'server.tool_name'[/red]")
+                console.print(f"[dim]Example: productivity_server.show_reminders[/dim]")
+                raise SystemExit(1)
+            
+            server_name, name = tool_name.split(".", 1)
+            
+            # Find the tool
+            matching_tool = None
+            for tool in available_tools:
+                if tool["server"] == server_name and tool["name"] == name:
+                    matching_tool = tool
+                    break
+            
+            if not matching_tool:
+                console.print(f"[red]Error: Tool '{tool_name}' not found[/red]")
+                console.print(f"\n[dim]Use 'python -m orchestrator.run_agent tools' to see available tools[/dim]")
+                raise SystemExit(1)
+            
+            # Parse arguments if provided
+            tool_args = {}
+            if args:
+                try:
+                    tool_args = json.loads(args)
+                except json.JSONDecodeError as e:
+                    console.print(f"[red]Error: Invalid JSON in --args:[/red] {e}")
+                    raise SystemExit(1)
+            
+            # Execute the tool
+            console.print(f"[bold green]Executing {tool_name}...[/bold green]\n")
+            
+            from orchestrator.executor import execute_plan
+            from orchestrator.models import ExecutionStep
+            
+            # Create a simple single-step plan
+            step = ExecutionStep(
+                id="exec_step",
+                service_name=server_name,
+                tool_name=name,
+                arguments=tool_args,
+                depends_on=[]
+            )
+            
+            plan = ExecutionPlan(
+                steps=[step],
+                rationale="Direct tool execution via exec command"
+            )
+            
+            try:
+                results = await execute_plan(plan, progress_callback=None)
+                result = results.get("exec_step")
+                
+                # Display the result
+                if result is not None:
+                    if isinstance(result, str):
+                        # String result (like formatted tables)
+                        console.print(result)
+                    elif hasattr(result, "__dataclass_fields__"):
+                        # Dataclass result
+                        result_dict = asdict(result)
+                        console.print(JSON(json.dumps(result_dict, indent=2)))
+                    elif isinstance(result, list):
+                        if result and hasattr(result[0], "__dataclass_fields__"):
+                            # List of dataclasses
+                            result_dicts = [asdict(item) for item in result]
+                            console.print(JSON(json.dumps(result_dicts, indent=2)))
+                        else:
+                            # Plain list
+                            console.print(JSON(json.dumps(result, indent=2)))
+                    else:
+                        # Other types
+                        console.print(JSON(json.dumps(result, indent=2)))
+                    
+                    console.print(f"\n[green]✓ Tool executed successfully[/green]")
+                else:
+                    console.print("[yellow]Tool returned no result[/yellow]")
+                    
+            except Exception as e:
+                console.print(f"[red]Error executing tool:[/red] {e}")
+                raise SystemExit(1)
+        
+        asyncio.run(execute_tool())
+    
     cli()
 

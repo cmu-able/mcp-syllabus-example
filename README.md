@@ -184,7 +184,7 @@ uv run python orchestrator/run_agent.py run \
   course1.pdf ../more-courses course2.pdf
 ```
 
-### Tool Discovery
+### Tool Discovery & Execution
 ```bash
 # List all 14 available tools
 uv run python orchestrator/run_agent.py tools
@@ -194,6 +194,14 @@ uv run python orchestrator/run_agent.py tools syllabus_server.parse_syllabus
 
 # Show all tools from a service
 uv run python orchestrator/run.py --list
+
+# Execute a specific tool directly
+uv run python orchestrator/run_agent.py exec productivity_server.show_reminders
+uv run python orchestrator/run_agent.py exec productivity_server.show_calendar_events
+
+# Execute a tool with arguments
+uv run python orchestrator/run_agent.py exec productivity_server.create_reminder \
+  --args '{"title": "Submit assignment", "due": "2025-12-15T23:59:00"}'
 ```
 
 ### Service Interaction
