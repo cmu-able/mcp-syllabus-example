@@ -4,6 +4,7 @@ from pathlib import Path
 import pdfplumber
 import requests
 import tempfile
+import io
 
 def _load_pdf_path(path_or_url: str) -> str:
     """
@@ -40,6 +41,21 @@ def extract_pdf_pages(path_or_url: str) -> list[str]:
     return pages
 
 
+def extract_pdf_pages_from_content(pdf_content: bytes) -> list[str]:
+    """
+    Extracts text from PDF content in memory.
+    :param pdf_content: Raw PDF file content as bytes
+    :return: The text contents of the PDF as a list of pages
+    """
+    pages: list[str] = []
+    with pdfplumber.open(io.BytesIO(pdf_content)) as pdf:
+        for page in pdf.pages:
+            text = page.extract_text()
+            if text:
+                pages.append(text.strip())
+    return pages
+
+
 def extract_pdf_text(path_or_url: str) -> str:
     """
     Extracts all text from a local or remote PDF and returns as a single string.
@@ -48,5 +64,15 @@ def extract_pdf_text(path_or_url: str) -> str:
     :return: The text contents of the PDF as a single string
     """
     pages = extract_pdf_pages(path_or_url)
+    return "\n\n".join(pages)
+
+
+def extract_pdf_text_from_content(pdf_content: bytes) -> str:
+    """
+    Extracts all text from PDF content in memory and returns as a single string.
+    :param pdf_content: Raw PDF file content as bytes
+    :return: The text contents of the PDF as a single string
+    """
+    pages = extract_pdf_pages_from_content(pdf_content)
     return "\n\n".join(pages)
 
