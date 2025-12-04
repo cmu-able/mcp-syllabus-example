@@ -9,6 +9,7 @@ from fastmcp import FastMCP
 from openai import OpenAI
 
 from prompts import load_prompt
+from .cache import SyllabusCache
 from .models import (Assignment, CourseSection, ExplicitMeeting, MeetingPattern, ParsedSyllabus, Policies,
                      ScheduleEntry)
 from .pdf_utils import extract_pdf_pages
@@ -20,6 +21,10 @@ _api_key = os.getenv("OPENAI_API_KEY")
 if not _api_key:
     raise RuntimeError("OPENAI_API_KEY environment variable is not set.")
 client = OpenAI(api_key=_api_key)
+
+# Initialize cache (respects SYLLABUSMCP_CACHE_DIR and SYLLABUSMCP_DISABLE_CACHE env vars)
+_cache_enabled = os.getenv("SYLLABUSMCP_DISABLE_CACHE", "").lower() not in ("1", "true", "yes")
+_cache = SyllabusCache() if _cache_enabled else None
 
 
 # -----------------------------
@@ -35,10 +40,24 @@ SYSTEM_PROMPT = load_prompt("syllabus_parser_system_prompt")
 # -----------------------------
 
 @mcp.tool()
-def parse_syllabus(pdf_path_or_url: str) -> ParsedSyllabus:
+def parse_syllabus(pdf_path_or_url: str, use_cache: bool = True) -> ParsedSyllabus:
     """
     Parse a syllabus PDF/URL into ParsedSyllabus.
+    
+    Args:
+        pdf_path_or_url: Path or URL to syllabus PDF
+        use_cache: Whether to use caching (default: True)
+        
+    Returns:
+        Parsed syllabus data
     """
+    # Check cache first
+    if use_cache and _cache_enabled and _cache:
+        cached = _cache.get(pdf_path_or_url)
+        if cached:
+            return cached
+    
+    # Cache miss - parse via LLM
     pages = extract_pdf_pages(pdf_path_or_url)
 
     # Join all pages for global parsing
@@ -148,6 +167,10 @@ def parse_syllabus(pdf_path_or_url: str) -> ParsedSyllabus:
         schedule=schedule,
         policies=policies,
     )
+    
+    # Cache the result
+    if use_cache and _cache_enabled and _cache:
+        _cache.set(pdf_path_or_url, parsed)
 
     return parsed
 
