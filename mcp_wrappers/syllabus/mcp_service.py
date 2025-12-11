@@ -46,20 +46,8 @@ def _parse_syllabus(pdf_path_or_url: str) -> ParsedSyllabus:
     but makes an HTTP call to the distributed syllabus service.
     """
     try:
-        # Determine if this is a URL or local file path
-        if pdf_path_or_url.startswith('http://') or pdf_path_or_url.startswith('https://'):
-            # For URLs, let the service handle the download
-            request = ParseSyllabusRequest(pdf_path_or_url=pdf_path_or_url)
-        else:
-            # For local files, read the content and send it
-            pdf_path = Path(pdf_path_or_url)
-            if not pdf_path.exists():
-                raise FileNotFoundError(f"PDF file not found: {pdf_path_or_url}")
-            
-            pdf_content = pdf_path.read_bytes()
-            pdf_content_base64 = base64.b64encode(pdf_content).decode('utf-8')
-            request = ParseSyllabusRequest(pdf_content_base64=pdf_content_base64)
-        
+        request = _resolve_pdf_in_request(pdf_path_or_url)
+
         # Make HTTP call with extended timeout for LLM processing
         # Using requests library instead of httpx for better compatibility with asyncio.to_thread()
         response = requests.post(
@@ -81,6 +69,23 @@ def _parse_syllabus(pdf_path_or_url: str) -> ParsedSyllabus:
         raise RuntimeError(f"HTTP error from syllabus service: {e.response.status_code} {e.response.text}")
     except Exception as e:
         raise RuntimeError(f"Error calling syllabus service: {str(e)}")
+
+
+def _resolve_pdf_in_request(pdf_path_or_url):
+    # Determine if this is a URL or local file path
+    if pdf_path_or_url.startswith('http://') or pdf_path_or_url.startswith('https://'):
+        # For URLs, let the service handle the download
+        request = ParseSyllabusRequest(pdf_path_or_url=pdf_path_or_url)
+    else:
+        # For local files, read the content and send it
+        pdf_path = Path(pdf_path_or_url)
+        if not pdf_path.exists():
+            raise FileNotFoundError(f"PDF file not found: {pdf_path_or_url}")
+
+        pdf_content = pdf_path.read_bytes()
+        pdf_content_base64 = base64.b64encode(pdf_content).decode('utf-8')
+        request = ParseSyllabusRequest(pdf_content_base64=pdf_content_base64)
+    return request
 
 
 def _answer_syllabus_question(
