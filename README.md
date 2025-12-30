@@ -31,8 +31,8 @@ graph TB
         end
     
         subgraph "Registry Layer"
-            REGISTRY["📚 Registry<br/>Service Discovery"]
-            GATEWAY["🚪 MCP Gateway<br/>Unified Tool Interface<br/>14 Available Tools"]
+            REGISTRY[\"📚 Registry<br/>Service Discovery\"]
+            GATEWAY[\"🚪 MCP Gateway<br/>Unified Tool Interface<br/>16 Available Tools\"]
         end
     
         subgraph "MCP Tool Layer" 
@@ -43,7 +43,7 @@ graph TB
     end
 
     subgraph "Service Layer - Docker Containers"
-        SERVICE1["📄 Syllabus Service<br/>FastAPI :8001<br/>POST /syllabus:parse<br/>POST /syllabus/qa<br/>POST /syllabi/qa"]
+        SERVICE1[\"📄 Syllabus Service<br/>FastAPI :8001<br/>POST /syllabus/text<br/>POST /syllabus/structure<br/>POST /syllabus/qa<br/>POST /syllabi/qa\"]
         SERVICE2["🎓 Academic Planner<br/>FastAPI :8002<br/>POST /academics/plan<br/>POST /academics/assignments"]
         SERVICE3["📅 Productivity Service<br/>FastAPI :8003<br/>• Calendar Events CRUD<br/>• Reminders CRUD<br/>• Bulk Operations"]
     end
@@ -72,10 +72,11 @@ graph TB
 ## 🎯 Service Architecture
 
 ### 📄 Syllabus Service (Port 8001)
-**Containerized PDF processing and AI-powered extraction**
-- **Endpoints**: `/syllabus:parse`, `/syllabus/qa`, `/syllabi/qa`
-- **Features**: PDF text extraction, GPT-powered parsing, Q&A
-- **Timeouts**: 5min parsing, 2min questions (handles long LLM operations)
+**Two-stage PDF processing and AI-powered structuring**
+- **Endpoints**: `/syllabus/text` (extraction), `/syllabus/structure` (LLM structuring), `/syllabus/qa`, `/syllabi/qa`
+- **Flow**: Extract raw pages → (optional) trim/edit → structure into `ParsedSyllabus` → QA on structured data
+- **Timeouts**: 3 min extraction, 10 min structuring (LLM-heavy), 5 min QA
+- **Safety**: Extraction metadata (page count, source, truncation flag) and schedule-text auto-detection
 - **Dependencies**: pdfplumber, OpenAI API
 
 ### 🎓 Academic Planner Service (Port 8002)  
@@ -188,11 +189,11 @@ uv run python orchestrator/run_agent.py run \
 
 ### Tool Discovery & Execution
 ```bash
-# List all 14 available tools
+# List all 16 available tools
 uv run python orchestrator/run_agent.py tools
 
 # View specific tool schemas  
-uv run python orchestrator/run_agent.py tools syllabus_server.parse_syllabus
+uv run python orchestrator/run_agent.py tools syllabus_server.get_syllabus_text
 
 # Show all tools from a service
 uv run python orchestrator/run.py --list
@@ -209,9 +210,15 @@ uv run python orchestrator/run_agent.py exec productivity_server.create_reminder
 ### Service Interaction
 ```bash
 # Direct API calls (when services are running)
-curl -X POST "http://localhost:8001/syllabus:parse" \
-  -H "Content-Type: application/json" \
-  -d '{"pdf_path_or_url": "path/to/syllabus.pdf"}'
+# 1) Extract text + pages
+curl -X POST \"http://localhost:8001/syllabus/text\" \\
+  -H \"Content-Type: application/json\" \\
+  -d '{\"pdf_path_or_url\": \"path/to/syllabus.pdf\"}'
+
+# 2) Structure extracted text (you can optionally edit full_text/pages first)
+curl -X POST \"http://localhost:8001/syllabus/structure\" \\
+  -H \"Content-Type: application/json\" \\
+  -d '{\"full_text\": \"<pasted or edited text>\", \"pages\": [\"Page 1 text\", \"Page 2 text\"]}'
 
 # Health check all services
 curl http://localhost:8001/health && \
