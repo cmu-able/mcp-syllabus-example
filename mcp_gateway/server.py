@@ -14,8 +14,11 @@ from fastmcp import FastMCP
 # Import the raw functions from each MCP wrapper (not the decorated versions)
 # This allows us to register them with our own unified FastMCP instance
 from mcp_wrappers.syllabus.mcp_service import (
-    _parse_syllabus, _answer_syllabus_question, _answer_question_about_syllabi,
-    SYLLABUS_SERVICE_URL
+    _get_syllabus_text,
+    _structure_syllabus,
+    _answer_syllabus_question,
+    _answer_question_about_syllabi,
+    SYLLABUS_SERVICE_URL,
 )
 from mcp_wrappers.academic_planner.mcp_service import (
     _create_academic_plan, _show_assignment_summary,
@@ -33,6 +36,7 @@ from mcp_wrappers.productivity.mcp_service import (
 from syllabus_server.models import ParsedSyllabus
 from academic_planner.models import Plan
 from productivity_server.models import CalendarEvent, Reminder
+from services.shared.models import TextExtractionResponse
 
 # Create the unified MCP server
 mcp = FastMCP("SyllabusDistributedGateway")
@@ -58,9 +62,15 @@ def get_service_status() -> dict[str, str]:
 
 # Syllabus Service Tools
 @mcp.tool()
-def parse_syllabus(pdf_path_or_url: str) -> ParsedSyllabus:
-    """Parse a syllabus PDF/URL into ParsedSyllabus."""
-    return _parse_syllabus(pdf_path_or_url)
+def get_syllabus_text(pdf_path_or_url: str) -> TextExtractionResponse:
+    """Extract text and pages from a syllabus PDF/URL."""
+    return _get_syllabus_text(pdf_path_or_url)
+
+
+@mcp.tool()
+def structure_syllabus(full_text: str, pages: list[str] | None = None, schedule_text: str | None = None) -> ParsedSyllabus:
+    """Convert extracted syllabus text into structured data."""
+    return _structure_syllabus(full_text, pages, schedule_text)
 
 
 @mcp.tool()
@@ -157,7 +167,8 @@ def list_available_tools() -> dict[str, list[str]]:
     """
     return {
         "syllabus_service": [
-            "parse_syllabus - Parse a syllabus PDF/URL into structured data",
+            "get_syllabus_text - Extract text and pages from a syllabus PDF/URL",
+            "structure_syllabus - Convert extracted text into structured data",
             "answer_syllabus_question - Answer questions about parsed syllabus content",
             "answer_question_about_syllabi - Answer questions about multiple syllabi with comparison/consolidation"
         ],

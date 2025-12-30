@@ -202,6 +202,36 @@ class AnswerQuestionAboutSyllabiRequest(BaseModel):
     syllabi_data: list[ParsedSyllabus]
     question: str
 
+class ExtractionMetadata(BaseModel):
+    """Metadata about the PDF text extraction stage."""
+
+    page_count: int = 0
+    source: t.Literal["url", "file", "bytes"] = "file"
+    truncated: bool = False
+
+
+class TextExtractionResponse(BaseModel):
+    """Response model for PDF text extraction."""
+
+    pages: list[str] = Field(default_factory=list)
+    full_text: str
+    metadata: ExtractionMetadata
+
+
+class StructureSyllabusRequest(BaseModel):
+    """Request model for converting extracted text into structured syllabus data."""
+
+    full_text: str
+    pages: list[str] | None = None
+    schedule_text: str | None = None
+
+    @model_validator(mode="after")
+    def validate_full_text(self) -> "StructureSyllabusRequest":
+        """Ensure full_text is provided."""
+        if not self.full_text or not self.full_text.strip():
+            raise ValueError("full_text must be provided for structure stage")
+        return self
+
 
 class CreatePlanRequest(BaseModel):
     """Request model for creating an academic plan."""

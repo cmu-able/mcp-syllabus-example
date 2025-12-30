@@ -22,6 +22,8 @@ from syllabus_server.models import ParsedSyllabus
 from services.shared.models import (
     ParsedSyllabus as PydanticParsedSyllabus,
     ParseSyllabusRequest,
+    StructureSyllabusRequest,
+    TextExtractionResponse,
     AnswerQuestionRequest,
     AnswerQuestionResponse,
     AnswerQuestionAboutSyllabiRequest,
@@ -33,42 +35,10 @@ mcp = FastMCP("SyllabusMCPWrapper")
 # Service URL - configurable via environment variable
 SYLLABUS_SERVICE_URL = os.getenv("SYLLABUS_SERVICE_URL", "http://localhost:8001")
 
-# Timeout settings for LLM operations (in seconds)
-PARSE_TIMEOUT = 600.0  # 10 minutes for syllabus parsing
+# Timeout settings (in seconds)
+TEXT_TIMEOUT = 180.0
+STRUCTURE_TIMEOUT = 600.0  # LLM stage can be long
 QUESTION_TIMEOUT = 300.0  # 5 minutes for question answering
-
-
-def _parse_syllabus(pdf_path_or_url: str) -> ParsedSyllabus:
-    """
-    Parse a syllabus PDF/URL into ParsedSyllabus.
-    
-    This maintains the exact same signature as the original MCP tool
-    but makes an HTTP call to the distributed syllabus service.
-    """
-    try:
-        request = _resolve_pdf_in_request(pdf_path_or_url)
-
-        # Make HTTP call with extended timeout for LLM processing
-        # Using requests library instead of httpx for better compatibility with asyncio.to_thread()
-        response = requests.post(
-            f"{SYLLABUS_SERVICE_URL}/syllabus:parse",
-            json=request.model_dump(),
-            timeout=PARSE_TIMEOUT,
-        )
-        response.raise_for_status()
-            
-        # Convert response back to original dataclass format
-        pydantic_result = PydanticParsedSyllabus(**response.json())
-        dataclass_result = _pydantic_to_dataclass_syllabus(pydantic_result)
-        
-        return dataclass_result
-        
-    except requests.Timeout:
-        raise RuntimeError(f"Syllabus parsing timed out after {PARSE_TIMEOUT} seconds")
-    except requests.HTTPError as e:
-        raise RuntimeError(f"HTTP error from syllabus service: {e.response.status_code} {e.response.text}")
-    except Exception as e:
-        raise RuntimeError(f"Error calling syllabus service: {str(e)}")
 
 
 def _resolve_pdf_in_request(pdf_path_or_url):
@@ -86,6 +56,58 @@ def _resolve_pdf_in_request(pdf_path_or_url):
         pdf_content_base64 = base64.b64encode(pdf_content).decode('utf-8')
         request = ParseSyllabusRequest(pdf_content_base64=pdf_content_base64)
     return request
+
+
+def _get_syllabus_text(pdf_path_or_url: str) -> TextExtractionResponse:
+    """Call the syllabus text extraction endpoint and return raw text plus pages."""
+    try:
+        request = _resolve_pdf_in_request(pdf_path_or_url)
+
+        response = requests.post(
+            f"{SYLLABUS_SERVICE_URL}/syllabus/text",
+            json=request.model_dump(),
+            timeout=TEXT_TIMEOUT,
+        )
+        response.raise_for_status()
+
+        extraction = TextExtractionResponse(**response.json())
+        return extraction
+    except requests.Timeout:
+        raise RuntimeError(f"Syllabus text extraction timed out after {TEXT_TIMEOUT} seconds")
+    except requests.HTTPError as e:
+        raise RuntimeError(f"HTTP error from syllabus service: {e.response.status_code} {e.response.text}")
+    except Exception as e:
+        raise RuntimeError(f"Error calling syllabus text service: {str(e)}")
+
+
+def _structure_syllabus(
+    full_text: str,
+    pages: list[str] | None = None,
+    schedule_text: str | None = None,
+) -> ParsedSyllabus:
+    """Send extracted text to the structure endpoint and return ParsedSyllabus."""
+    try:
+        request = StructureSyllabusRequest(
+            full_text=full_text,
+            pages=pages,
+            schedule_text=schedule_text,
+        )
+
+        response = requests.post(
+            f"{SYLLABUS_SERVICE_URL}/syllabus/structure",
+            json=request.model_dump(),
+            timeout=STRUCTURE_TIMEOUT,
+        )
+        response.raise_for_status()
+
+        pydantic_result = PydanticParsedSyllabus(**response.json())
+        return _pydantic_to_dataclass_syllabus(pydantic_result)
+    except requests.Timeout:
+        raise RuntimeError(f"Syllabus structuring timed out after {STRUCTURE_TIMEOUT} seconds")
+    except requests.HTTPError as e:
+        raise RuntimeError(f"HTTP error from syllabus service: {e.response.status_code} {e.response.text}")
+    except Exception as e:
+        raise RuntimeError(f"Error calling syllabus structure service: {str(e)}")
 
 
 def _answer_syllabus_question(
@@ -248,9 +270,19 @@ def _pydantic_to_dataclass_syllabus(pydantic_syllabus: PydanticParsedSyllabus) -
 
 # MCP tool wrappers that call the raw functions
 @mcp.tool()
-def parse_syllabus(pdf_path_or_url: str) -> ParsedSyllabus:
-    """Parse a syllabus PDF/URL into ParsedSyllabus."""
-    return _parse_syllabus(pdf_path_or_url)
+def get_syllabus_text(pdf_path_or_url: str) -> TextExtractionResponse:
+    """Extract text and pages from a syllabus PDF/URL."""
+    return _get_syllabus_text(pdf_path_or_url)
+
+
+@mcp.tool()
+def structure_syllabus(
+    full_text: str,
+    pages: list[str] | None = None,
+    schedule_text: str | None = None,
+) -> ParsedSyllabus:
+    """Convert extracted syllabus text to structured data."""
+    return _structure_syllabus(full_text, pages, schedule_text)
 
 
 @mcp.tool()

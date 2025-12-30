@@ -21,6 +21,9 @@ from services.shared.models import (
     AnswerQuestionRequest,
     AnswerQuestionResponse,
     AnswerQuestionAboutSyllabiRequest,
+    ExtractionMetadata,
+    TextExtractionResponse,
+    StructureSyllabusRequest,
     Assignment as PydanticAssignment,
     CourseSection as PydanticCourseSection,
     ExplicitMeeting as PydanticExplicitMeeting,
@@ -34,6 +37,8 @@ from prompts import load_prompt
 
 # Global async OpenAI client - will be initialized on startup
 client: AsyncOpenAI = None
+MAX_FULL_TEXT_CHARS = 30000
+MAX_SCHEDULE_TEXT_CHARS = 15000
 
 
 @asynccontextmanager
@@ -70,70 +75,61 @@ async def health_check():
     """Health check endpoint for container orchestration."""
     return {"status": "healthy", "service": "syllabus-service"}
 
-
-@app.post("/syllabus:parse", response_model=PydanticParsedSyllabus)
-async def parse_syllabus(request: ParseSyllabusRequest) -> PydanticParsedSyllabus:
-    """
-    Parse a syllabus PDF/URL into structured data.
-    
-    This endpoint can take 30-60 seconds for complex PDFs due to LLM processing.
-    """
+@app.post("/syllabus/text", response_model=TextExtractionResponse)
+async def extract_syllabus_text(request: ParseSyllabusRequest) -> TextExtractionResponse:
+    """Extract raw text and pages from a syllabus PDF or URL."""
     try:
-        # Extract PDF content
         if request.pdf_content:
             pages = extract_pdf_pages_from_content(request.pdf_content)
+            source = "bytes"
         else:
             pages = extract_pdf_pages(request.pdf_path_or_url)
-        
-        # Join all pages for global parsing
+            source = "url" if request.pdf_path_or_url.startswith(("http://", "https://")) else "file"
+
         full_text = "\\n\\n".join(pages)
-        
-        # Heuristic: pick likely schedule pages
-        schedule_pages: list[str] = []
-        for p in pages:
-            lp = p.lower()
-            if (
-                "schedule" in lp
-                or "course calendar" in lp
-                or "course schedule" in lp
-                or ("week" in lp and "date" in lp and "topic" in lp)
-                or "deliverable" in lp
-                or "assignment schedule" in lp
-            ):
-                schedule_pages.append(p)
-        
-        # Fallback: if no explicit schedule page detected, leave empty string
-        schedule_text = "\\n\\n".join(schedule_pages) if schedule_pages else ""
-        
+        truncated = False
+        if len(full_text) > MAX_FULL_TEXT_CHARS:
+            full_text = full_text[:MAX_FULL_TEXT_CHARS]
+            truncated = True
+
+        metadata = ExtractionMetadata(
+            page_count=len(pages),
+            source=source,
+            truncated=truncated,
+        )
+
+        return TextExtractionResponse(pages=pages, full_text=full_text, metadata=metadata)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error extracting syllabus text: {str(e)}")
+
+
+@app.post("/syllabus/structure", response_model=PydanticParsedSyllabus)
+async def structure_syllabus(request: StructureSyllabusRequest) -> PydanticParsedSyllabus:
+    """Convert extracted syllabus text into structured data using an LLM."""
+    try:
+        schedule_text = _derive_schedule_text(request.pages, request.schedule_text)
+
         model_input = {
-            "full_text": full_text[:30000],          # increased for full semester schedules
-            "schedule_text": schedule_text[:15000],   # increased to capture complete schedule tables
+            "full_text": request.full_text[:MAX_FULL_TEXT_CHARS],
+            "schedule_text": schedule_text[:MAX_SCHEDULE_TEXT_CHARS],
         }
-        
-        # Call OpenAI API - this is the long-running LLM operation
-        # Using async client allows multiple requests to be processed concurrently
+
         completion = await client.chat.completions.create(
             model="gpt-5",
             response_format={"type": "json_object"},
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
-                {
-                    "role": "user",
-                    "content": json.dumps(model_input),
-                },
+                {"role": "user", "content": json.dumps(model_input)},
             ],
         )
-        
+
         raw = completion.choices[0].message.content or "{}"
         data = json.loads(raw)
-        
-        # Convert raw JSON → Pydantic models defensively
         parsed_syllabus = _convert_to_pydantic_syllabus(data)
-        
+
         return parsed_syllabus
-        
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error parsing syllabus: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error structuring syllabus: {str(e)}")
 
 
 @app.post("/syllabus/qa", response_model=AnswerQuestionResponse)
@@ -340,6 +336,28 @@ def _convert_to_pydantic_syllabus(data: dict[str, t.Any]) -> PydanticParsedSylla
     
     return parsed
 
+def _derive_schedule_text(pages: list[str] | None, provided_schedule_text: str | None) -> str:
+    """Derive schedule-focused text either from caller hint or by detecting schedule-like pages."""
+    if provided_schedule_text:
+        return provided_schedule_text
+
+    if not pages:
+        return ""
+
+    schedule_pages: list[str] = []
+    for page in pages:
+        lp = page.lower()
+        if (
+            "schedule" in lp
+            or "course calendar" in lp
+            or "course schedule" in lp
+            or ("week" in lp and "date" in lp and "topic" in lp)
+            or "deliverable" in lp
+            or "assignment schedule" in lp
+        ):
+            schedule_pages.append(page)
+
+    return "\\n\\n".join(schedule_pages) if schedule_pages else ""
 
 if __name__ == "__main__":
     import uvicorn
