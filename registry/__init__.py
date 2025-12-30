@@ -1,55 +1,39 @@
 # -*- coding: utf-8 -*-
-from mcp_gateway.server import mcp as gateway_mcp
+import importlib
+import pkgutil
 
-# Server registry mapping server names to MCP instances
-# All services are now unified through the MCP Gateway
-SERVER_REGISTRY = {
-    "syllabus_server": gateway_mcp,
-    "productivity_server": gateway_mcp,
-    "academic_planner_server": gateway_mcp,
-}
+import mcp_wrappers
+
+
+def _load_servers_from_pkg(pkg=mcp_wrappers) -> dict[str, object]:
+    """Dynamically load all MCP instances exposed under mcp_wrappers.*."""
+    registry: dict[str, object] = {}
+    for info in pkgutil.iter_modules(pkg.__path__, pkg.__name__ + "."):
+        mod = importlib.import_module(info.name)
+        if hasattr(mod, "mcp"):
+            server_name = f"{info.name.rsplit('.', 1)[-1]}_server"
+            registry[server_name] = getattr(mod, "mcp")
+    return registry
+
+
+# Server registry mapping server names to MCP instances (dynamic)
+SERVER_REGISTRY = _load_servers_from_pkg()
 
 async def list_tool_schemas() -> list[dict]:
     """Collect and return JSON schemas of all available tools from MCP servers."""
     schemas = []
 
-    # Get all tools from the unified MCP gateway
-    all_tools = await gateway_mcp.get_tools()
-    
-    # Map tool names to their originating services for backward compatibility
-    tool_service_mapping = {
-        # Syllabus server tools
-        "parse_syllabus": "syllabus_server",
-        "answer_syllabus_question": "syllabus_server",
-        "answer_question_about_syllabi": "syllabus_server",
-        # Academic planner tools
-        "create_academic_plan": "academic_planner_server",
-        "show_assignment_summary": "academic_planner_server",
-        # Productivity server tools
-        "create_calendar_event": "productivity_server",
-        "create_reminder": "productivity_server",
-        "create_calendar_events_bulk": "productivity_server",
-        "create_reminders_bulk": "productivity_server",
-        "list_calendar_events": "productivity_server",
-        "list_reminders": "productivity_server",
-        "show_calendar_events": "productivity_server",
-        "show_reminders": "productivity_server",
-        # Gateway tools
-        "get_gateway_info": "gateway",
-        "list_available_tools": "gateway",
-    }
-    
-    for tool_key, tool in all_tools.items():
-        # Determine which server this tool belongs to
-        server_name = tool_service_mapping.get(tool_key, "unknown_server")
-        
-        schemas.append({
-            "server": server_name,
-            "name": tool_key,
-            "title": tool.title or tool_key,
-            "description": tool.description or "",
-            "inputSchema": tool.parameters or {},
-            "outputSchema": tool.output_schema or {},
-        })
+    # Collect tools from each server instance
+    for server_name, mcp in SERVER_REGISTRY.items():
+        tools = await mcp.get_tools()
+        for tool_key, tool in tools.items():
+            schemas.append({
+                "server": server_name,
+                "name": tool_key,
+                "title": tool.title or tool_key,
+                "description": tool.description or "",
+                "inputSchema": tool.parameters or {},
+                "outputSchema": tool.output_schema or {},
+            })
 
     return schemas
