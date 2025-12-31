@@ -4,8 +4,10 @@ This module handles the execution of execution plans, including dependency resol
 variable substitution, and tool invocation.
 """
 import asyncio
-import typing as t
 from enum import Enum
+import typing as t
+
+from pydantic import BaseModel
 
 from orchestrator.models import ExecutionPlan, ExecutionStep
 
@@ -246,7 +248,6 @@ def _resolve_variable(var_ref: str, results: dict[str, t.Any]) -> t.Any:
     
     # Start with the step result
     value = results[step_id]
-    
     # Navigate nested fields
     for field in parts[1:]:
         if isinstance(value, dict):
@@ -258,9 +259,16 @@ def _resolve_variable(var_ref: str, results: dict[str, t.Any]) -> t.Any:
             if not hasattr(value, field):
                 raise KeyError(f"Field '{field}' not found in step '{step_id}' result")
             value = getattr(value, field)
+        elif isinstance(value, BaseModel):
+            model_dict = value.model_dump()
+            if field not in model_dict:
+                raise KeyError(f"Field '{field}' not found in step '{step_id}' result")
+            value = model_dict[field]
+        elif hasattr(value, field):
+            value = getattr(value, field)
         else:
             raise TypeError(
-                f"Cannot access field '{field}' on non-dict/non-dataclass value from step '{step_id}'"
+                f"Cannot access field '{field}' on value of type '{type(value).__name__}' from step '{step_id}'"
             )
     
     return value
