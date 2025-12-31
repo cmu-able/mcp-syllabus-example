@@ -1,26 +1,22 @@
 """
 MCP wrapper for syllabus service.
 
-This module maintains the original MCP tool signatures but makes HTTP calls
-to the distributed syllabus service. It handles serialization/deserialization
-between dataclass and Pydantic models, and implements proper timeouts for
+This module maintains the MCP tool signatures but makes HTTP calls
+to the distributed syllabus service. It uses Pydantic models end-to-end for
+validation and serialization, and implements proper timeouts for
 long-running LLM operations.
 """
 from __future__ import annotations
 
-import os
 import base64
-from dataclasses import asdict
+import os
 from pathlib import Path
 
 import requests
 from fastmcp import FastMCP
 
-# Import original dataclass models for MCP interface compatibility
-from syllabus_server.models import ParsedSyllabus
-# Import Pydantic models for HTTP serialization
 from services.shared.models import (
-    ParsedSyllabus as PydanticParsedSyllabus,
+    ParsedSyllabus,
     ParseSyllabusRequest,
     StructureSyllabusRequest,
     TextExtractionResponse,
@@ -100,8 +96,7 @@ def _structure_syllabus(
         )
         response.raise_for_status()
 
-        pydantic_result = PydanticParsedSyllabus(**response.json())
-        return _pydantic_to_dataclass_syllabus(pydantic_result)
+        return ParsedSyllabus(**response.json())
     except requests.Timeout:
         raise RuntimeError(f"Syllabus structuring timed out after {STRUCTURE_TIMEOUT} seconds")
     except requests.HTTPError as e:
@@ -131,10 +126,8 @@ def _answer_syllabus_question(
         A natural language answer to the question
     """
     try:
-        # Convert dataclass to Pydantic for HTTP serialization
-        pydantic_syllabus = _dataclass_to_pydantic_syllabus(syllabus_data)
         request = AnswerQuestionRequest(
-            syllabus_data=pydantic_syllabus,
+            syllabus_data=syllabus_data,
             question=question,
         )
         
@@ -180,10 +173,8 @@ def _answer_question_about_syllabi(
         A natural language answer to the question
     """
     try:
-        # Convert dataclasses to Pydantic for HTTP serialization
-        pydantic_syllabi = [_dataclass_to_pydantic_syllabus(s) for s in syllabi_data]
         request = AnswerQuestionAboutSyllabiRequest(
-            syllabi_data=pydantic_syllabi,
+            syllabi_data=syllabi_data,
             question=question,
         )
         
@@ -206,66 +197,6 @@ def _answer_question_about_syllabi(
     except Exception as e:
         raise RuntimeError(f"Error calling syllabus service: {str(e)}")
 
-
-def _dataclass_to_pydantic_syllabus(syllabus: ParsedSyllabus) -> PydanticParsedSyllabus:
-    """
-    Convert dataclass ParsedSyllabus to Pydantic ParsedSyllabus.
-    
-    This handles the conversion between the original dataclass models used by
-    the MCP interface and the Pydantic models used by the REST API.
-    """
-    # Convert to dict first, then to Pydantic model
-    # This handles nested structures automatically
-    syllabus_dict = asdict(syllabus)
-    return PydanticParsedSyllabus(**syllabus_dict)
-
-
-def _pydantic_to_dataclass_syllabus(pydantic_syllabus: PydanticParsedSyllabus) -> ParsedSyllabus:
-    """
-    Convert Pydantic ParsedSyllabus to dataclass ParsedSyllabus.
-    
-    This handles the conversion from REST API response back to the original
-    dataclass format expected by the MCP interface.
-    """
-    from syllabus_server.models import (
-        Assignment,
-        CourseSection, 
-        ExplicitMeeting,
-        MeetingPattern,
-        Policies,
-        ScheduleEntry,
-    )
-    
-    # Convert Pydantic to dict, then reconstruct dataclasses
-    data = pydantic_syllabus.model_dump()
-    
-    # Reconstruct nested dataclasses
-    sections = []
-    for sec_data in data.get("sections", []):
-        meeting_patterns = [MeetingPattern(**mp) for mp in sec_data.get("meeting_patterns", [])]
-        explicit_meetings = [ExplicitMeeting(**em) for em in sec_data.get("explicit_meetings", [])]
-        
-        sections.append(CourseSection(
-            section_id=sec_data.get("section_id", ""),
-            instructors=sec_data.get("instructors", []),
-            meeting_patterns=meeting_patterns,
-            explicit_meetings=explicit_meetings,
-        ))
-    
-    assignments = [Assignment(**a) for a in data.get("assignments", [])]
-    schedule = [ScheduleEntry(**s) for s in data.get("schedule", [])]
-    policies = Policies(**(data.get("policies", {})))
-    
-    return ParsedSyllabus(
-        course_code=data.get("course_code", ""),
-        course_title=data.get("course_title", ""),
-        term=data.get("term", ""),
-        timezone=data.get("timezone", ""),
-        sections=sections,
-        assignments=assignments,
-        schedule=schedule,
-        policies=policies,
-    )
 
 
 # MCP tool wrappers that call the raw functions

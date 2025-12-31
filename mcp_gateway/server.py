@@ -9,6 +9,7 @@ the appropriate distributed services via HTTP.
 from __future__ import annotations
 
 import os
+
 from fastmcp import FastMCP
 
 # Import the raw functions from each MCP wrapper (not the decorated versions)
@@ -32,11 +33,14 @@ from mcp_wrappers.productivity.mcp_service import (
     PRODUCTIVITY_SERVICE_URL
 )
 
-# Import models for type hints
-from syllabus_server.models import ParsedSyllabus
-from academic_planner.models import Plan
-from productivity_server.models import CalendarEvent, Reminder
-from services.shared.models import TextExtractionResponse
+# Import models for type hints (Pydantic)
+from services.shared.models import (
+    CalendarEvent,
+    ParsedSyllabus,
+    Plan,
+    Reminder,
+    TextExtractionResponse,
+)
 
 # Create the unified MCP server
 mcp = FastMCP("SyllabusDistributedGateway")

@@ -1,24 +1,20 @@
 """
 MCP wrapper for productivity service.
 
-This module maintains the original MCP tool signatures but makes HTTP calls
-to the distributed productivity service. It handles serialization/deserialization
-between dataclass and Pydantic models for calendar events and reminders.
+This module maintains the MCP tool signatures but makes HTTP calls
+to the distributed productivity service. It uses Pydantic models end-to-end
+for validation and serialization of calendar events and reminders.
 """
 from __future__ import annotations
 
 import os
-from dataclasses import asdict
 
 import httpx
 from fastmcp import FastMCP
 
-# Import original dataclass models for MCP interface compatibility
-from productivity_server.models import CalendarEvent, Reminder
-# Import Pydantic models for HTTP serialization
 from services.shared.models import (
-    CalendarEvent as PydanticCalendarEvent,
-    Reminder as PydanticReminder,
+    CalendarEvent,
+    Reminder,
     CreateCalendarEventRequest,
     CreateReminderRequest,
     CreateCalendarEventsBulkRequest,
@@ -65,11 +61,7 @@ def _create_calendar_event(
             )
             response.raise_for_status()
             
-        # Convert response back to original dataclass format
-        pydantic_result = PydanticCalendarEvent(**response.json())
-        dataclass_result = _pydantic_to_dataclass_calendar_event(pydantic_result)
-        
-        return dataclass_result
+        return CalendarEvent(**response.json())
         
     except httpx.TimeoutException:
         raise RuntimeError(f"Calendar event creation timed out after {STANDARD_TIMEOUT} seconds")
@@ -105,11 +97,7 @@ def _create_reminder(
             )
             response.raise_for_status()
             
-        # Convert response back to original dataclass format
-        pydantic_result = PydanticReminder(**response.json())
-        dataclass_result = _pydantic_to_dataclass_reminder(pydantic_result)
-        
-        return dataclass_result
+        return Reminder(**response.json())
         
     except httpx.TimeoutException:
         raise RuntimeError(f"Reminder creation timed out after {STANDARD_TIMEOUT} seconds")
@@ -127,13 +115,7 @@ def _create_calendar_events_bulk(events: list[CalendarEvent]) -> list[CalendarEv
     but makes an HTTP call to the distributed productivity service.
     """
     try:
-        # Convert dataclass events to Pydantic for HTTP serialization
-        pydantic_events = []
-        for event in events:
-            event_dict = asdict(event)
-            pydantic_events.append(PydanticCalendarEvent(**event_dict))
-        
-        request = CreateCalendarEventsBulkRequest(events=pydantic_events)
+        request = CreateCalendarEventsBulkRequest(events=events)
         
         # Make HTTP call with standard timeout
         with httpx.Client(timeout=STANDARD_TIMEOUT) as client:
@@ -143,15 +125,8 @@ def _create_calendar_events_bulk(events: list[CalendarEvent]) -> list[CalendarEv
             )
             response.raise_for_status()
             
-        # Convert response back to original dataclass format
         response_data = response.json()
-        dataclass_results = []
-        for event_data in response_data:
-            pydantic_event = PydanticCalendarEvent(**event_data)
-            dataclass_event = _pydantic_to_dataclass_calendar_event(pydantic_event)
-            dataclass_results.append(dataclass_event)
-        
-        return dataclass_results
+        return [CalendarEvent(**event_data) for event_data in response_data]
         
     except httpx.TimeoutException:
         raise RuntimeError(f"Bulk calendar events creation timed out after {STANDARD_TIMEOUT} seconds")
@@ -169,13 +144,7 @@ def _create_reminders_bulk(reminders_list: list[Reminder]) -> list[Reminder]:
     but makes an HTTP call to the distributed productivity service.
     """
     try:
-        # Convert dataclass reminders to Pydantic for HTTP serialization
-        pydantic_reminders = []
-        for reminder in reminders_list:
-            reminder_dict = asdict(reminder)
-            pydantic_reminders.append(PydanticReminder(**reminder_dict))
-        
-        request = CreateRemindersBulkRequest(reminders_list=pydantic_reminders)
+        request = CreateRemindersBulkRequest(reminders_list=reminders_list)
         
         # Make HTTP call with standard timeout
         with httpx.Client(timeout=STANDARD_TIMEOUT) as client:
@@ -185,15 +154,8 @@ def _create_reminders_bulk(reminders_list: list[Reminder]) -> list[Reminder]:
             )
             response.raise_for_status()
             
-        # Convert response back to original dataclass format
         response_data = response.json()
-        dataclass_results = []
-        for reminder_data in response_data:
-            pydantic_reminder = PydanticReminder(**reminder_data)
-            dataclass_reminder = _pydantic_to_dataclass_reminder(pydantic_reminder)
-            dataclass_results.append(dataclass_reminder)
-        
-        return dataclass_results
+        return [Reminder(**reminder_data) for reminder_data in response_data]
         
     except httpx.TimeoutException:
         raise RuntimeError(f"Bulk reminders creation timed out after {STANDARD_TIMEOUT} seconds")
@@ -216,15 +178,8 @@ def _list_calendar_events() -> list[CalendarEvent]:
             response = client.get(f"{PRODUCTIVITY_SERVICE_URL}/calendar/events")
             response.raise_for_status()
             
-        # Convert response back to original dataclass format
         response_data = response.json()
-        dataclass_results = []
-        for event_data in response_data:
-            pydantic_event = PydanticCalendarEvent(**event_data)
-            dataclass_event = _pydantic_to_dataclass_calendar_event(pydantic_event)
-            dataclass_results.append(dataclass_event)
-        
-        return dataclass_results
+        return [CalendarEvent(**event_data) for event_data in response_data]
         
     except httpx.TimeoutException:
         raise RuntimeError(f"List calendar events timed out after {STANDARD_TIMEOUT} seconds")
@@ -247,15 +202,8 @@ def _list_reminders() -> list[Reminder]:
             response = client.get(f"{PRODUCTIVITY_SERVICE_URL}/reminders")
             response.raise_for_status()
             
-        # Convert response back to original dataclass format
         response_data = response.json()
-        dataclass_results = []
-        for reminder_data in response_data:
-            pydantic_reminder = PydanticReminder(**reminder_data)
-            dataclass_reminder = _pydantic_to_dataclass_reminder(pydantic_reminder)
-            dataclass_results.append(dataclass_reminder)
-        
-        return dataclass_results
+        return [Reminder(**reminder_data) for reminder_data in response_data]
         
     except httpx.TimeoutException:
         raise RuntimeError(f"List reminders timed out after {STANDARD_TIMEOUT} seconds")
@@ -278,7 +226,6 @@ def _show_calendar_events() -> str:
             response = client.get(f"{PRODUCTIVITY_SERVICE_URL}/calendar/events:str")
             response.raise_for_status()
             
-        # Extract formatted display from response
         result = ShowCalendarEventsResponse(**response.json())
         return result.formatted_events
         
@@ -303,7 +250,6 @@ def _show_reminders() -> str:
             response = client.get(f"{PRODUCTIVITY_SERVICE_URL}/reminders:str")
             response.raise_for_status()
             
-        # Extract formatted display from response
         result = ShowRemindersResponse(**response.json())
         return result.formatted_reminders
         
@@ -314,24 +260,6 @@ def _show_reminders() -> str:
     except Exception as e:
         raise RuntimeError(f"Error calling productivity service: {str(e)}")
 
-
-def _pydantic_to_dataclass_calendar_event(pydantic_event: PydanticCalendarEvent) -> CalendarEvent:
-    """Convert Pydantic CalendarEvent to dataclass CalendarEvent."""
-    return CalendarEvent(
-        title=pydantic_event.title,
-        start=pydantic_event.start,
-        end=pydantic_event.end,
-        location=pydantic_event.location
-    )
-
-
-def _pydantic_to_dataclass_reminder(pydantic_reminder: PydanticReminder) -> Reminder:
-    """Convert Pydantic Reminder to dataclass Reminder."""
-    return Reminder(
-        title=pydantic_reminder.title,
-        due=pydantic_reminder.due,
-        notes=pydantic_reminder.notes
-    )
 
 
 # MCP tool wrappers that call the raw functions
