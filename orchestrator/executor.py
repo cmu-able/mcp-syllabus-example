@@ -4,7 +4,10 @@ This module handles the execution of execution plans, including dependency resol
 variable substitution, and tool invocation.
 """
 import asyncio
+import base64
+import json
 from enum import Enum
+from pathlib import Path
 import typing as t
 
 from pydantic import BaseModel
@@ -17,6 +20,92 @@ class ExecutionState(Enum):
     IN_PROGRESS = "IN_PROGRESS"
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
+
+
+def _extract_mcp_result(call_result: t.Any) -> t.Any:
+    """Extract content from MCP CallToolResult.
+    
+    MCP returns results wrapped in CallToolResult with content as TextContent objects.
+    This function extracts and parses the actual result.
+    
+    Args:
+        call_result: The CallToolResult from MCP client
+        
+    Returns:
+        Parsed result (dict, str, or original if parsing fails)
+    """
+    # Extract content from CallToolResult
+    if hasattr(call_result, "content") and call_result.content:
+        # result.content is a list of TextContent objects
+        if isinstance(call_result.content, list) and len(call_result.content) > 0:
+            content = call_result.content[0]
+            if hasattr(content, "text"):
+                # Try to parse as JSON (for structured returns)
+                try:
+                    return json.loads(content.text)
+                except (json.JSONDecodeError, AttributeError):
+                    # Return as string if not JSON
+                    return content.text
+    
+    # Return as-is if we can't extract
+    return call_result
+
+
+def _serialize_value(value: t.Any) -> t.Any:
+    """Recursively serialize Pydantic models and other complex types.
+    
+    Args:
+        value: Value to serialize
+        
+    Returns:
+        Serialized value (dicts for Pydantic models, unchanged for primitives)
+    """
+    if isinstance(value, BaseModel):
+        return value.model_dump()
+    elif isinstance(value, list):
+        return [_serialize_value(item) for item in value]
+    elif isinstance(value, dict):
+        return {k: _serialize_value(v) for k, v in value.items()}
+    else:
+        return value
+
+
+def _preprocess_pdf_arguments(arguments: dict[str, t.Any]) -> dict[str, t.Any]:
+    """Preprocess arguments for MCP tool calls.
+    
+    This function:
+    1. Converts local PDF paths to base64
+    2. Serializes Pydantic models to dicts
+    
+    Args:
+        arguments: Tool arguments that may contain PDF paths or Pydantic models
+        
+    Returns:
+        Modified arguments ready for MCP transmission
+    """
+    arguments = arguments.copy()
+    
+    # Handle PDF path conversion
+    if "pdf_path_or_url" in arguments:
+        pdf_path = arguments["pdf_path_or_url"]
+        
+        # Check if it's a local file path (not a URL)
+        if pdf_path and not pdf_path.startswith(("http://", "https://")):
+            path = Path(pdf_path)
+            if path.exists() and path.is_file():
+                # Read and encode the file
+                pdf_content = path.read_bytes()
+                encoded_content = base64.b64encode(pdf_content).decode("utf-8")
+                
+                # Replace pdf_path_or_url with pdf_content_base64
+                arguments["pdf_content_base64"] = encoded_content
+                arguments["pdf_path_or_url"] = None
+    
+    # Serialize Pydantic models and other complex types
+    for key, value in arguments.items():
+        arguments[key] = _serialize_value(value)
+    
+    return arguments
 
 async def execute_plan(
     plan: ExecutionPlan,
@@ -141,39 +230,27 @@ async def _execute_step(
         # Resolve arguments (substitute variable references)
         resolved_args = _resolve_arguments(step.arguments, results)
         
-        # Get the MCP server
-        mcp_server = SERVER_REGISTRY.get(step.service_name)
-        if mcp_server is None:
+        # Preprocess arguments (e.g., convert local PDF paths to base64)
+        resolved_args = _preprocess_pdf_arguments(resolved_args)
+        
+        # Get the MCP client for this service
+        mcp_client = SERVER_REGISTRY.get(step.service_name)
+        if mcp_client is None:
             raise RuntimeError(
                 f"Server not found: {step.service_name}. "
                 f"Available servers: {list(SERVER_REGISTRY.keys())}"
             )
         
-        # Get the tool from the MCP server
-        tools = await mcp_server.get_tools()
-        tool_func = tools.get(step.tool_name)
-        
-        if tool_func is None:
-            raise RuntimeError(
-                f"Tool '{step.tool_name}' not found in server '{step.service_name}'. "
-                f"Available tools: {list(tools.keys())}"
-            )
-        
-        # Execute the tool
-        # FastMCP wraps functions in FunctionTool objects, so we need to access the underlying function
+        # Call the tool via MCP protocol
         try:
-            # All tools are wrapped by @mcp.tool(), so access the .fn attribute
-            actual_func = tool_func.fn
-            
-            # Run synchronous tool functions in a thread to enable true parallelism
-            if asyncio.iscoroutinefunction(actual_func):
-                # Already async, can call directly
-                result = await actual_func(**resolved_args)
-            else:
-                # Synchronous function - run in thread pool
-                result = await asyncio.to_thread(actual_func, **resolved_args)
-            
-            return result
+            # Connect to the MCP server and call the tool
+            async with mcp_client:
+                call_result = await mcp_client.call_tool(step.tool_name, resolved_args)
+                
+                # Extract content from CallToolResult
+                result = _extract_mcp_result(call_result)
+                
+                return result
             
         except Exception as e:
             raise RuntimeError(
