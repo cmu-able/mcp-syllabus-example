@@ -9,96 +9,92 @@
 
 ## 🎯 Distributed Architecture Overview
 
-This system demonstrates a **production-ready distributed architecture** that transforms a monolithic MCP application into scalable microservices. Key architectural achievements:
+This system demonstrates a **production-ready distributed MCP architecture** with native protocol support and LLM sampling capabilities. Key architectural achievements:
 
-- **🐳 Containerized Microservices** - Each service runs in its own Docker container
-- **🌐 HTTP-based Communication** - Services communicate via REST APIs
-- **🚪 Unified MCP Gateway** - Single entry point for all distributed tools
-- **⚖️ Load Balancing Ready** - Stateless services enable horizontal scaling
-- **🔄 Service Independence** - Services can be deployed and scaled independently
-- **🛡️ Type-safe APIs** - Pydantic models ensure data consistency across services
-- **📊 Health Monitoring** - Built-in health checks for each service
-- **🚀 Production Deploy** - Complete Docker Compose infrastructure
+- **🐳 Containerized MCP Servers** - Each service runs as an MCP server in Docker
+- **🌐 Native MCP Protocol** - Direct MCP communication via StreamableHTTP transport
+- **🤖 Sampling Support** - MCP servers can request LLM completions via ctx.sample()
+- **📋 Dynamic Registry** - Service discovery and MCP client management
+- **⚖️ Horizontal Scaling** - Stateless MCP servers enable load balancing
+- **🔄 Service Independence** - Services deployed and scaled independently
+- **🛡️ Type-safe APIs** - Pydantic models ensure data consistency
+- **📊 Health Monitoring** - TCP health checks for all services
+- **🚀 Production Ready** - Complete Docker Compose infrastructure
 
 ## 🏗️ Architecture Diagram
 
 ```mermaid
 graph TB
-    subgraph "Orchestration CLI"
-        subgraph "Orchestration Layer"
-            CLI1["orchestrator/run.py<br/>📋 Batch Processing"]
-            CLI2["orchestrator/run_agent.py<br/>🤖 AI-Driven Workflow"]
-        end
+    subgraph "Orchestration Layer"
+        CLI1["orchestrator/run.py<br/>📋 Batch Processing"]
+        CLI2["orchestrator/run_agent.py<br/>🤖 AI-Driven Workflow"]
+    end
     
-        subgraph "Registry Layer"
-            REGISTRY[\"📚 Registry<br/>Service Discovery\"]
-            GATEWAY[\"🚪 MCP Gateway<br/>Unified Tool Interface<br/>16 Available Tools\"]
-        end
-    
-        subgraph "MCP Tool Layer" 
-            WRAPPER1["📄 Syllabus Wrapper<br/>HTTP Client"]
-            WRAPPER2["🎓 Academic Wrapper<br/>HTTP Client"]
-            WRAPPER3["📅 Productivity Wrapper<br/>HTTP Client"]
-        end
+    subgraph "Registry & Sampling"
+        REGISTRY["📚 MCP Client Registry<br/>Service Discovery<br/>Dynamic Client Creation"]
+        SAMPLING["🤖 OpenAI Sampling Handler<br/>Provides LLM to MCP Servers<br/>GPT-4o / GPT-5 Support"]
     end
 
-    subgraph "Service Layer - Docker Containers"
-        SERVICE1[\"📄 Syllabus Service<br/>FastAPI :8001<br/>POST /syllabus/text<br/>POST /syllabus/structure<br/>POST /syllabus/qa<br/>POST /syllabi/qa\"]
-        SERVICE2["🎓 Academic Planner<br/>FastAPI :8002<br/>POST /academics/plan<br/>POST /academics/assignments"]
-        SERVICE3["📅 Productivity Service<br/>FastAPI :8003<br/>• Calendar Events CRUD<br/>• Reminders CRUD<br/>• Bulk Operations"]
+    subgraph "MCP Servers - Docker Containers"
+        SERVICE1["📄 Syllabus Server<br/>FastMCP :8601/mcp<br/>• get_syllabus_text<br/>• structure_syllabus (sampling)<br/>• answer_syllabus_question (sampling)<br/>• answer_question_about_syllabi"]
+        SERVICE2["🎓 Academic Planner<br/>FastMCP :8602/mcp<br/>• create_academic_plan (sampling)<br/>• show_assignment_summary"]
+        SERVICE3["📅 Productivity Server<br/>FastMCP :8603/mcp<br/>• Calendar Events CRUD<br/>• Reminders CRUD<br/>• Bulk Operations"]
     end
     
     CLI1 --> REGISTRY
     CLI2 --> REGISTRY
-    REGISTRY --> GATEWAY
-    GATEWAY --> WRAPPER1
-    GATEWAY --> WRAPPER2
-    GATEWAY --> WRAPPER3
-    WRAPPER1 -->|HTTP POST :8001| SERVICE1
-    WRAPPER2 -->|HTTP POST :8002| SERVICE2
-    WRAPPER3 -->|HTTP POST :8003| SERVICE3
+    REGISTRY -->|MCP Protocol<br/>StreamableHTTP| SERVICE1
+    REGISTRY -->|MCP Protocol<br/>StreamableHTTP| SERVICE2
+    REGISTRY -->|MCP Protocol<br/>StreamableHTTP| SERVICE3
+    
+    SERVICE1 -.->|ctx.sample()| SAMPLING
+    SERVICE2 -.->|ctx.sample()| SAMPLING
+    SAMPLING -.->|LLM Response| SERVICE1
+    SAMPLING -.->|LLM Response| SERVICE2
     
     classDef orchestration fill:#e1f5fe
-    classDef integration fill:#f3e5f5
-    classDef communication fill:#fff3e0
+    classDef registry fill:#f3e5f5
     classDef service fill:#e8f5e8
+    classDef sampling fill:#fff3e0
     
     class CLI1,CLI2 orchestration
-    class REGISTRY,GATEWAY integration
-    class WRAPPER1,WRAPPER2,WRAPPER3 communication
+    class REGISTRY registry
+    class SAMPLING sampling
     class SERVICE1,SERVICE2,SERVICE3 service
 ```
 
 ## 🎯 Service Architecture
 
-### 📄 Syllabus Service (Port 8001)
-**Two-stage PDF processing and AI-powered structuring**
-- **Endpoints**: `/syllabus/text` (extraction), `/syllabus/structure` (LLM structuring), `/syllabus/qa`, `/syllabi/qa`
-- **Flow**: Extract raw pages → (optional) trim/edit → structure into `ParsedSyllabus` → QA on structured data
-- **Timeouts**: 3 min extraction, 10 min structuring (LLM-heavy), 5 min QA
-- **Safety**: Extraction metadata (page count, source, truncation flag) and schedule-text auto-detection
-- **Dependencies**: pdfplumber, OpenAI API
+### 📄 Syllabus Server (Port 8601)
+**MCP server for PDF processing and AI-powered syllabus structuring**
+- **MCP Endpoint**: `http://localhost:8601/mcp` (StreamableHTTP)
+- **Tools**: `get_syllabus_text`, `structure_syllabus`, `answer_syllabus_question`, `answer_question_about_syllabi`
+- **Flow**: Extract PDF → Structure via sampling (GPT-5) → Answer questions via sampling
+- **Sampling**: Uses `ctx.sample()` for LLM-powered structuring and Q&A
+- **Dependencies**: pdfplumber, FastMCP, MCP sampling support
 
-### 🎓 Academic Planner Service (Port 8002)  
-**Multi-course planning and analysis**
-- **Endpoints**: `/academics/plan`, `/academics/assignments`
+### 🎓 Academic Planner Server (Port 8602)  
+**MCP server for multi-course planning and analysis**
+- **MCP Endpoint**: `http://localhost:8602/mcp` (StreamableHTTP)
+- **Tools**: `create_academic_plan`, `show_assignment_summary`
 - **Features**: Cross-course analysis, conflict detection, workload balancing
-- **Timeouts**: 5min plan creation, 30sec summaries
-- **AI Integration**: GPT-powered academic planning
+- **Sampling**: Uses `ctx.sample()` for GPT-5 powered academic planning
+- **Returns**: Structured `Plan` with events, reminders, and assignments
 
-### 📅 Productivity Service (Port 8003)
-**Calendar and reminder management**
-- **Endpoints**: 8 CRUD endpoints for events/reminders + bulk operations
-- **Features**: Fast CRUD operations, bulk processing, formatted displays
-- **Timeouts**: 30sec (optimized for speed)
-- **Storage**: In-memory with structured models
+### 📅 Productivity Server (Port 8603)
+**MCP server for calendar and reminder management**
+- **MCP Endpoint**: `http://localhost:8603/mcp` (StreamableHTTP)
+- **Tools**: 8 CRUD tools for events/reminders + bulk operations + formatted displays
+- **Features**: Fast CRUD operations, bulk processing, formatted output
+- **Storage**: In-memory with Pydantic models
+- **No Sampling**: Pure CRUD operations without LLM calls
 
-### 🚪 MCP Gateway
-**Unified tool interface**
-- **Function**: Routes calls to appropriate services via HTTP
-- **Tools Available**: 14 total tools across all services
-- **Benefits**: Single import point, backward compatibility
-- **Location**: `mcp_gateway/server.py`
+### 📚 MCP Client Registry
+**Dynamic service discovery and client management**
+- **Function**: Creates FastMCP clients with sampling support for each service
+- **Location**: `registry/__init__.py`
+- **Sampling Handler**: Provides OpenAI-based LLM access to MCP servers
+- **Benefits**: Single point of configuration, automatic client creation
 
 ## 🚀 Quick Start - Docker Deployment
 
@@ -126,17 +122,16 @@ The fastest way to run SyllabusMCP is using Docker Compose, which automatically 
    ```
    
    This starts:
-   - 📄 Syllabus Service on port 8001
-   - 🎓 Academic Planner on port 8002  
-   - 📅 Productivity Service on port 8003
-   - 💓 Health monitoring for all services
+   - 📄 Syllabus MCP Server on port 8601
+   - 🎓 Academic Planner MCP Server on port 8602  
+   - 📅 Productivity MCP Server on port 8603
+   - 💓 TCP health checks for all services
 
 3. **Verify deployment**:
    ```bash
    docker-compose ps
-   curl http://localhost:8001/health
-   curl http://localhost:8002/health
-   curl http://localhost:8003/health
+   # MCP servers don't have /health endpoints - use docker ps to check status
+   docker ps --filter "name=syllabus-service" --filter "name=academic-planner-service" --filter "name=productivity-service"
    ```
 
 ### 💻 Local Development Setup
@@ -150,10 +145,10 @@ uv sync --extra dev
 # Set environment
 export OPENAI_API_KEY="your-api-key-here"
 
-# Run services individually (3 separate terminals)
-uv run python services/syllabus_service/app.py
-uv run python services/academic_planner_service/app.py  
-uv run python services/productivity_service/app.py
+# Run MCP servers individually (3 separate terminals)
+uv run python services/syllabus_service/mcp_server.py
+uv run python services/academic_planner_service/mcp_server.py  
+uv run python services/productivity_service/mcp_server.py
 ```
 
 ## 💬 Usage Examples
@@ -209,54 +204,54 @@ uv run python orchestrator/run_agent.py exec productivity_server.create_reminder
 
 ### Service Interaction
 ```bash
-# Direct API calls (when services are running)
-# 1) Extract text + pages
-curl -X POST \"http://localhost:8001/syllabus/text\" \\
-  -H \"Content-Type: application/json\" \\
-  -d '{\"pdf_path_or_url\": \"path/to/syllabus.pdf\"}'
+# MCP servers use MCP protocol, not REST
+# Use the orchestrator or registry to interact with services:
 
-# 2) Structure extracted text (you can optionally edit full_text/pages first)
-curl -X POST \"http://localhost:8001/syllabus/structure\" \\
-  -H \"Content-Type: application/json\" \\
-  -d '{\"full_text\": \"<pasted or edited text>\", \"pages\": [\"Page 1 text\", \"Page 2 text\"]}'
+# List available tools from all services
+uv run python orchestrator/run_agent.py tools
 
-# Health check all services
-curl http://localhost:8001/health && \
-curl http://localhost:8002/health && \
-curl http://localhost:8003/health
+# Execute a specific tool
+uv run python orchestrator/run_agent.py exec syllabus_server.get_syllabus_text \
+  --args '{"pdf_path_or_url": "../syllabus-pdfs/17603.pdf"}'
+
+# Check container status
+docker ps
 ```
 
 ## 📊 Production Features
 
 ### 📈 Health Monitoring
 ```bash
-# Check individual service health
-curl http://localhost:8001/health  # Syllabus Service
-curl http://localhost:8002/health  # Academic Planner  
-curl http://localhost:8003/health  # Productivity Service
+# Check service status via Docker
+docker ps
+docker-compose ps
 
-# All services respond with:
-{"status": "healthy", "service": "service_name", "timestamp": "..."}
+# Services use TCP health checks (netcat)
+# Health status shows in docker ps output as (healthy) or (unhealthy)
 ```
 
 ### 📊 Service Metrics
 ```bash
-# View service logs
+# View MCP server logs
 docker-compose logs syllabus-service
 docker-compose logs academic-planner-service
 docker-compose logs productivity-service
 
 # Monitor resource usage
 docker stats
+
+# Follow live logs
+docker-compose logs -f syllabus-service
 ```
 
 ### 🔄 Scaling Services
 ```bash
-# Scale individual services
+# Scale individual MCP servers
 docker-compose up -d --scale syllabus-service=3
 docker-compose up -d --scale productivity-service=2
 
-# Services are stateless and can be horizontally scaled
+# MCP servers are stateless and can be horizontally scaled
+# Note: You'll need a load balancer to distribute MCP requests
 ```
 
 ## 🧪 Testing
@@ -282,61 +277,63 @@ docker-compose up -d
 
 ### Distributed Project Structure
 ```
-├── services/                     # 🏢 Microservices (FastAPI)
-│   ├── syllabus_service/         # PDF processing service :8001
-│   │   ├── app.py               # FastAPI application
+├── services/                     # 🏬 MCP Servers (FastMCP)
+│   ├── syllabus_service/         # PDF processing :8601
+│   │   ├── mcp_server.py        # FastMCP server with sampling
 │   │   └── Dockerfile           # Container definition
-│   ├── academic_planner_service/ # Planning service :8002
-│   │   ├── app.py               # FastAPI application
+│   ├── academic_planner_service/ # Planning :8602
+│   │   ├── mcp_server.py        # FastMCP server with sampling
 │   │   └── Dockerfile           # Container definition
-│   ├── productivity_service/     # CRUD service :8003
-│   │   ├── app.py               # FastAPI application
+│   ├── productivity_service/     # CRUD :8603
+│   │   ├── mcp_server.py        # FastMCP server (no sampling)
 │   │   └── Dockerfile           # Container definition
 │   └── shared/
-│       └── models.py            # 🏷️ Pydantic models
-├── mcp_wrappers/                # 🌐 HTTP Client Layer
-│   ├── syllabus/mcp_service.py   # HTTP wrapper
-│   ├── academic_planner/mcp_service.py
-│   └── productivity/mcp_service.py
-├── mcp_gateway/                 # 🚪 Unified Gateway
-│   └── server.py                # Single MCP interface
+│       ├── models.py            # 🏷️ Pydantic models
+│       └── sampling_utils.py    # Shared sampling utilities
 ├── orchestrator/                # 🎭 Client Applications
 │   ├── run.py                   # Batch processor
 │   ├── run_agent.py             # AI-driven workflow
 │   ├── shared.py                # Common utilities
-│   └── executor.py              # Parallel execution
-├── registry/                    # 📚 Service Discovery
-│   └── __init__.py              # Tool registration
+│   ├── executor.py              # Parallel execution
+│   ├── sampling.py              # OpenAI sampling handler
+│   └── models.py                # Execution models
+├── registry/                    # 📚 MCP Client Registry
+│   └── __init__.py              # Dynamic client creation
 ├── docker-compose.yml           # 🐳 Service Orchestration
 ├── .env.example                 # Environment template
-└── DOCKER_DEPLOYMENT.md         # Deployment guide
+└── README.md                    # This file
 ```
 
-### Adding New Microservices
+### Adding New MCP Servers
 
-1. **Create FastAPI Service**:
+1. **Create FastMCP Server**:
    ```bash
    mkdir services/new_service
-   # Add app.py with FastAPI endpoints
+   # Add mcp_server.py with FastMCP and @mcp.tool() decorators
    # Add Dockerfile
    ```
 
-2. **Add HTTP Wrapper**:
-   ```bash
-   mkdir mcp_wrappers/new_service
-   # Create mcp_service.py with HTTP client
-   ```
-
-3. **Update Gateway**:
+2. **Register in Registry**:
    ```python
-   # Add imports in mcp_gateway/server.py
-   # Register tools with @mcp.tool() decorator
+   # Add to MCP_SERVICES dict in registry/__init__.py
+   MCP_SERVICES = {
+       "new_server": os.getenv("NEW_SERVICE_URL", "http://localhost:8604") + "/mcp",
+   }
    ```
 
-4. **Update Docker Compose**:
+3. **Update Docker Compose**:
    ```yaml
    # Add service definition in docker-compose.yml
-   # Include health checks and networking
+   # Use TCP health check: nc -z localhost PORT
+   # Expose port for MCP protocol
+   ```
+
+4. **Add Sampling (if needed)**:
+   ```python
+   # In your tool function:
+   async def your_tool(data: dict, ctx: Context | None = None):
+       if ctx and hasattr(ctx, "sample"):
+           result = await ctx.sample(messages="your prompt", model_preferences="gpt-4o")
    ```
 
 ## 🔧 Configuration
@@ -346,44 +343,48 @@ docker-compose up -d
 # Required
 OPENAI_API_KEY=your-openai-key-here
 
-# Service URLs (automatically configured in Docker)
-SYLLABUS_SERVICE_URL=http://syllabus-service:8001
-ACADEMIC_PLANNER_SERVICE_URL=http://academic-planner-service:8002  
-PRODUCTIVITY_SERVICE_URL=http://productivity-service:8003
+# MCP Service URLs (automatically configured in Docker)
+SYLLABUS_SERVICE_URL=http://localhost:8601
+ACADEMIC_PLANNER_SERVICE_URL=http://localhost:8602  
+PRODUCTIVITY_SERVICE_URL=http://localhost:8603
 
-# Optional: Service timeouts
-SYLLABUS_TIMEOUT=300  # 5 minutes for parsing
-ACADEMIC_TIMEOUT=300  # 5 minutes for planning
-PRODUCTIVITY_TIMEOUT=30  # 30 seconds for CRUD
+# Optional: MCP Server Configuration
+SYLLABUS_MCP_HOST=0.0.0.0
+SYLLABUS_MCP_PORT=8601
+ACADEMIC_PLANNER_MCP_HOST=0.0.0.0
+ACADEMIC_PLANNER_MCP_PORT=8602
+PRODUCTIVITY_MCP_HOST=0.0.0.0
+PRODUCTIVITY_MCP_PORT=8603
 ```
 
 ### Docker Configuration
-- **Networking**: Services communicate via internal Docker network
-- **Health Checks**: All services have `/health` endpoints
-- **Volumes**: No persistent storage required (stateless services)
-- **Ports**: 8001, 8002, 8003 exposed for external access
+- **Networking**: MCP servers communicate via internal Docker network
+- **Health Checks**: TCP checks using `nc -z localhost PORT`
+- **Volumes**: No persistent storage required (stateless servers)
+- **Ports**: 8601, 8602, 8603 exposed for MCP protocol access
+- **Protocol**: StreamableHTTP transport for MCP communication
 
 ## 🎓 Educational Context - API Design Principles
 
 This project demonstrates **advanced API design concepts** for **CMU 17-625**:
 
 ### 📚 Core Concepts Demonstrated
-1. **🌐 Distributed Architecture** - Microservices with HTTP communication
-2. **🎁 Service Decomposition** - Single responsibility per service
-3. **🚪 API Gateway Pattern** - Unified interface to distributed services
-4. **📊 Type Safety** - Pydantic models for data validation
-5. **🔄 Horizontal Scaling** - Stateless service design
-6. **💓 Observability** - Health checks and structured logging
-7. **🚀 Containerization** - Production-ready deployment
-8. **🛠️ Developer Experience** - Clear APIs, documentation, testing
+1. **🌐 Protocol-Driven Architecture** - MCP protocol for distributed services
+2. **🎁 Service Decomposition** - Single responsibility per MCP server
+3. **📋 Dynamic Service Discovery** - Registry pattern for client management
+4. **📊 Type Safety** - Pydantic models for data validation across protocol
+5. **🔄 Horizontal Scaling** - Stateless MCP server design
+6. **🤖 LLM Integration** - Native sampling support in MCP protocol
+7. **🚀 Containerization** - Production-ready Docker deployment
+8. **🛠️ Developer Experience** - Tool discovery, typed interfaces, error handling
 
 ### 💯 API Design Best Practices
-- **RESTful Design** - Standard HTTP methods and status codes
-- **Error Handling** - Consistent error responses across services
-- **Versioning Strategy** - Prepared for API evolution
-- **Documentation** - OpenAPI/Swagger for each service
-- **Testing** - Comprehensive test coverage including integration tests
-- **Security** - Input validation and proper error responses
+- **Protocol Design** - MCP specification with StreamableHTTP transport
+- **Error Handling** - Consistent error propagation across MCP servers
+- **Capability Discovery** - Runtime tool schema discovery via MCP
+- **Separation of Concerns** - MCP servers, sampling handlers, orchestration
+- **Testing** - Component testing with MCP client/server isolation
+- **Security** - Environment-based secrets, validated inputs via Pydantic
 
 ## ⚠️ Production Considerations
 
