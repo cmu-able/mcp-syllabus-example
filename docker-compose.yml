@@ -1,22 +1,19 @@
 # Docker Compose for SyllabusMCP Distributed Services
-version: '3.8'
 
 services:
-  # Syllabus parsing service (LLM-powered)
+  # Syllabus parsing service (MCP server with sampling)
   syllabus-service:
     build:
       context: .
       dockerfile: services/syllabus_service/Dockerfile
     container_name: syllabus-service
     ports:
-      - "8001:8001"
-    environment:
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - "8601:8601"
     volumes:
       # Mount PDFs directory if you have local PDF files to process
       - ./pdfs:/app/pdfs:ro
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      test: ["CMD-SHELL", "python3 -c 'import socket; s=socket.socket(); s.connect((\"localhost\",8601)); s.close()' || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -25,18 +22,16 @@ services:
     networks:
       - syllabus-network
 
-  # Academic planning service (LLM-powered)
+  # Academic planning service (MCP server with sampling)
   academic-planner-service:
     build:
       context: .
       dockerfile: services/academic_planner_service/Dockerfile
     container_name: academic-planner-service
     ports:
-      - "8002:8002"
-    environment:
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - "8602:8602"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      test: ["CMD-SHELL", "python3 -c 'import socket; s=socket.socket(); s.connect((\"localhost\",8602)); s.close()' || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -52,9 +47,9 @@ services:
       dockerfile: services/productivity_service/Dockerfile
     container_name: productivity-service
     ports:
-      - "8003:8003"
+      - "8603:8603"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      test: ["CMD-SHELL", "python3 -c 'import socket; s=socket.socket(); s.connect((\"localhost\",8603)); s.close()' || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -63,26 +58,6 @@ services:
     networks:
       - syllabus-network
 
-  # MCP Gateway - unified entry point
-  mcp-gateway:
-    build:
-      context: .
-      dockerfile: mcp_gateway/Dockerfile
-    container_name: mcp-gateway
-    environment:
-      - SYLLABUS_SERVICE_URL=http://syllabus-service:8001
-      - ACADEMIC_PLANNER_SERVICE_URL=http://academic-planner-service:8002
-      - PRODUCTIVITY_SERVICE_URL=http://productivity-service:8003
-    depends_on:
-      syllabus-service:
-        condition: service_healthy
-      academic-planner-service:
-        condition: service_healthy
-      productivity-service:
-        condition: service_healthy
-    restart: unless-stopped
-    networks:
-      - syllabus-network
 
 networks:
   syllabus-network:
