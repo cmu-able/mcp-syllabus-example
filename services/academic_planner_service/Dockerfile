@@ -24,11 +24,11 @@ RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser
 
 # Expose port
-EXPOSE 8002
+EXPOSE 8602
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8002/health || exit 1
+    CMD curl -f http://localhost:8602/mcp || exit 1
 
-# Run the application
-CMD ["uv", "run", "python", "services/academic_planner_service/app.py"]
+# Run the MCP server
+CMD ["uv", "run", "python", "services/academic_planner_service/mcp_server.py"]

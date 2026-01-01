@@ -23,13 +23,12 @@ COPY . .
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser
 
-# Expose port
-EXPOSE 8001
+# Expose port for MCP server
+EXPOSE 8601
 
-# Health check
+# Health check for MCP server (uses /mcp endpoint)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8001/health || exit 1
+    CMD curl -f http://localhost:8601/mcp || exit 1
 
-# Run the application with multiple workers to handle parallel requests
-# 4 workers allow processing 4 PDFs in parallel without queuing
-CMD ["uv", "run", "uvicorn", "services.syllabus_service.app:app", "--host", "0.0.0.0", "--port", "8001", "--workers", "4"]
+# Run the MCP server with sampling support
+CMD ["uv", "run", "python", "services/syllabus_service/mcp_server.py"]
