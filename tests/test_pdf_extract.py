@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """Tests for PDF extraction functionality."""
+import pytest
 from pathlib import Path
 from syllabus_server.pdf_utils import extract_pdf_text
 

@@ -183,6 +183,10 @@ class ParseSyllabusRequest(BaseModel):
             raise ValueError("Either pdf_path_or_url or pdf_content_base64 must be provided")
         if self.pdf_path_or_url and self.pdf_content_base64:
             raise ValueError("Only one of pdf_path_or_url or pdf_content_base64 should be provided")
+
+        if self.pdf_path_or_url:
+            if not self.pdf_path_or_url.startswith(("http://", "https://")):
+                raise ValueError("pdf_path_or_url must be an http/https URL; use pdf_content_base64 for local files")
         return self
 
 
