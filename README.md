@@ -43,14 +43,14 @@ graph TB
     
     CLI1 --> REGISTRY
     CLI2 --> REGISTRY
-    REGISTRY -->|MCP Protocol<br/>StreamableHTTP| SERVICE1
-    REGISTRY -->|MCP Protocol<br/>StreamableHTTP| SERVICE2
-    REGISTRY -->|MCP Protocol<br/>StreamableHTTP| SERVICE3
+    REGISTRY -->|"MCP Protocol<br/>StreamableHTTP"| SERVICE1
+    REGISTRY -->|"MCP Protocol<br/>StreamableHTTP"| SERVICE2
+    REGISTRY -->|"MCP Protocol<br/>StreamableHTTP"| SERVICE3
     
-    SERVICE1 -.->|ctx.sample()| SAMPLING
-    SERVICE2 -.->|ctx.sample()| SAMPLING
-    SAMPLING -.->|LLM Response| SERVICE1
-    SAMPLING -.->|LLM Response| SERVICE2
+    SERVICE1 -.->|"ctx.sample()"| SAMPLING
+    SERVICE2 -.->|"ctx.sample()"| SAMPLING
+    SAMPLING -.->|"LLM Response"| SERVICE1
+    SAMPLING -.->|"LLM Response"| SERVICE2
     
     classDef orchestration fill:#e1f5fe
     classDef registry fill:#f3e5f5
