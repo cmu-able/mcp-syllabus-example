@@ -44,7 +44,8 @@ Rules:
 8. Extract PDF file paths from the user message and use them in tool arguments
 9. Include ONLY the steps necessary to accomplish the user's specific goal
 10. If the user asks to display/show information, use appropriate display tools and do NOT create calendar/reminder items unless explicitly requested
-
+11. If a question is related to multiple sylllabi, use answer_question_about_syllabi tool instead of answer_syllabus_question
+ 
 CRITICAL RULES:
 - Tool outputs are stored directly as step outputs - use "$stepX" NOT "$stepX.output"
 - ALWAYS check which service provides each tool in the available_tools list
